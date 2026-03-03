@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dgSpecHash": "gh4Zi3wOK30=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\hasor\\Desktop\\RSII-GymManagementSystem\\backend\\Gym.Api\\Gym.Api.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\hasor\\.nuget\\packages\\microsoft.aspnetcore.openapi\\9.0.7\\microsoft.aspnetcore.openapi.9.0.7.nupkg.sha512",
+    "C:\\Users\\hasor\\.nuget\\packages\\microsoft.openapi\\1.6.17\\microsoft.openapi.1.6.17.nupkg.sha512",
+    "C:\\Users\\hasor\\.nuget\\packages\\newtonsoft.json\\13.0.3\\newtonsoft.json.13.0.3.nupkg.sha512",
+    "C:\\Users\\hasor\\.nuget\\packages\\stripe.net\\50.4.0\\stripe.net.50.4.0.nupkg.sha512",
+    "C:\\Users\\hasor\\.nuget\\packages\\system.configuration.configurationmanager\\9.0.0\\system.configuration.configurationmanager.9.0.0.nupkg.sha512",
+    "C:\\Users\\hasor\\.nuget\\packages\\system.diagnostics.eventlog\\9.0.0\\system.diagnostics.eventlog.9.0.0.nupkg.sha512",
+    "C:\\Users\\hasor\\.nuget\\packages\\system.security.cryptography.protecteddata\\9.0.0\\system.security.cryptography.protecteddata.9.0.0.nupkg.sha512"
+  ],
+  "logs": []
+}
