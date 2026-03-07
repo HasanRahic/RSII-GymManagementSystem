@@ -1,0 +1,13 @@
+C:\Users\hasor\Desktop\RSII-GymManagementSystem\backend\Gym.Services\bin\Debug\net9.0\Gym.Services.deps.json
+C:\Users\hasor\Desktop\RSII-GymManagementSystem\backend\Gym.Services\bin\Debug\net9.0\Gym.Services.dll
+C:\Users\hasor\Desktop\RSII-GymManagementSystem\backend\Gym.Services\bin\Debug\net9.0\Gym.Services.pdb
+C:\Users\hasor\Desktop\RSII-GymManagementSystem\backend\Gym.Services\obj\Debug\net9.0\Gym.Services.csproj.AssemblyReference.cache
+C:\Users\hasor\Desktop\RSII-GymManagementSystem\backend\Gym.Services\obj\Debug\net9.0\Gym.Services.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\hasor\Desktop\RSII-GymManagementSystem\backend\Gym.Services\obj\Debug\net9.0\Gym.Services.AssemblyInfoInputs.cache
+C:\Users\hasor\Desktop\RSII-GymManagementSystem\backend\Gym.Services\obj\Debug\net9.0\Gym.Services.AssemblyInfo.cs
+C:\Users\hasor\Desktop\RSII-GymManagementSystem\backend\Gym.Services\obj\Debug\net9.0\Gym.Services.csproj.CoreCompileInputs.cache
+C:\Users\hasor\Desktop\RSII-GymManagementSystem\backend\Gym.Services\obj\Debug\net9.0\Gym.Services.sourcelink.json
+C:\Users\hasor\Desktop\RSII-GymManagementSystem\backend\Gym.Services\obj\Debug\net9.0\Gym.Services.dll
+C:\Users\hasor\Desktop\RSII-GymManagementSystem\backend\Gym.Services\obj\Debug\net9.0\refint\Gym.Services.dll
+C:\Users\hasor\Desktop\RSII-GymManagementSystem\backend\Gym.Services\obj\Debug\net9.0\Gym.Services.pdb
+C:\Users\hasor\Desktop\RSII-GymManagementSystem\backend\Gym.Services\obj\Debug\net9.0\ref\Gym.Services.dll
