@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Gym.Infrastructure")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+bb5e5f2cdca0b3c665f16223e9dc589aa457354a")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c7440be65986cccdac93b7b2da10b04caee5b016")]
 [assembly: System.Reflection.AssemblyProductAttribute("Gym.Infrastructure")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Gym.Infrastructure")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

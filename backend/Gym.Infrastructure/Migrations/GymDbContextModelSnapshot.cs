@@ -656,7 +656,7 @@ namespace Gym.Infrastructure.Migrations
                     b.HasOne("Gym.Core.Entities.User", "User")
                         .WithMany("CheckIns")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Gym");
@@ -723,8 +723,7 @@ namespace Gym.Infrastructure.Migrations
                 {
                     b.HasOne("Gym.Core.Entities.Payment", "Payment")
                         .WithOne("SessionReservation")
-                        .HasForeignKey("Gym.Core.Entities.SessionReservation", "PaymentId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("Gym.Core.Entities.SessionReservation", "PaymentId");
 
                     b.HasOne("Gym.Core.Entities.TrainingSession", "TrainingSession")
                         .WithMany("Reservations")
@@ -749,13 +748,12 @@ namespace Gym.Infrastructure.Migrations
                 {
                     b.HasOne("Gym.Core.Entities.User", "ReviewedByAdmin")
                         .WithMany()
-                        .HasForeignKey("ReviewedByAdminId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("ReviewedByAdminId");
 
                     b.HasOne("Gym.Core.Entities.User", "User")
                         .WithMany("TrainerApplications")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("ReviewedByAdmin");
@@ -794,13 +792,11 @@ namespace Gym.Infrastructure.Migrations
                 {
                     b.HasOne("Gym.Core.Entities.City", "City")
                         .WithMany("Users")
-                        .HasForeignKey("CityId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("CityId");
 
                     b.HasOne("Gym.Core.Entities.GymFacility", "PrimaryGym")
                         .WithMany("PrimaryMembers")
-                        .HasForeignKey("PrimaryGymId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("PrimaryGymId");
 
                     b.Navigation("City");
 
@@ -842,8 +838,7 @@ namespace Gym.Infrastructure.Migrations
 
                     b.HasOne("Gym.Core.Entities.Payment", "Payment")
                         .WithOne("UserMembership")
-                        .HasForeignKey("Gym.Core.Entities.UserMembership", "PaymentId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("Gym.Core.Entities.UserMembership", "PaymentId");
 
                     b.HasOne("Gym.Core.Entities.User", "User")
                         .WithMany("Memberships")

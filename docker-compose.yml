@@ -1,0 +1,98 @@
+services:
+
+  # ─── SQL Server ────────────────────────────────────────────────────────────
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: gym_sqlserver
+    environment:
+      SA_PASSWORD: "Admin1234!"
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Express"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost",
+             "-U", "sa", "-P", "Admin1234!", "-Q", "SELECT 1",
+             "-C", "-b"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ─── RabbitMQ ──────────────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: gym_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"     # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: "guest"
+      RABBITMQ_DEFAULT_PASS: "guest"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ─── Gym API ───────────────────────────────────────────────────────────────
+  gym.api:
+    build:
+      context: ./backend
+      dockerfile: Gym.Api/Dockerfile
+    container_name: gym_api
+    ports:
+      - "5000:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ConnectionStrings__DefaultConnection: >
+        Server=sqlserver,1433;Database=220052;
+        User Id=sa;Password=Admin1234!;
+        TrustServerCertificate=True;
+      JWT__Key: "SuperSecretJwtKey_ChangeInProd_32chars!!"
+      JWT__Issuer: "GymApi"
+      JWT__Audience: "GymClients"
+      JWT__ExpiresInMinutes: "60"
+      RabbitMQ__Host: "rabbitmq"
+      RabbitMQ__Port: "5672"
+      RabbitMQ__Username: "guest"
+      RabbitMQ__Password: "guest"
+      RabbitMQ__NotificationsQueue: "gym.notifications"
+      Stripe__SecretKey: "${STRIPE_SECRET_KEY:-sk_test_placeholder}"
+      Stripe__PublishableKey: "${STRIPE_PUBLISHABLE_KEY:-pk_test_placeholder}"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+  # ─── Gym Notifications ─────────────────────────────────────────────────────
+  gym.notifications:
+    build:
+      context: ./backend
+      dockerfile: Gym.Notifications/Dockerfile
+    container_name: gym_notifications
+    environment:
+      DOTNET_ENVIRONMENT: "Production"
+      RabbitMQ__Host: "rabbitmq"
+      RabbitMQ__Port: "5672"
+      RabbitMQ__Username: "guest"
+      RabbitMQ__Password: "guest"
+      RabbitMQ__NotificationsQueue: "gym.notifications"
+      SMTP__Host: "${SMTP_HOST:-smtp.gmail.com}"
+      SMTP__Port: "${SMTP_PORT:-587}"
+      SMTP__Username: "${SMTP_USERNAME:-}"
+      SMTP__Password: "${SMTP_PASSWORD:-}"
+      SMTP__From: "${SMTP_FROM:-}"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  sqlserver_data:
+  rabbitmq_data:

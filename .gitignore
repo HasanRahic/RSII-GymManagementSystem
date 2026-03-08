@@ -1,0 +1,17 @@
+# .env files with secrets
+.env
+
+# .NET build output
+**/bin/
+**/obj/
+
+# VS / Rider
+.vs/
+*.user
+*.suo
+.idea/
+
+# Logs
+*.log
+
+# EF migrations snapshot shouldn't be ignored, so leave Migrations/ tracked

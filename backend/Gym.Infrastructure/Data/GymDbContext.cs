@@ -37,12 +37,12 @@ public class GymDbContext : DbContext
             e.HasOne(u => u.PrimaryGym)
              .WithMany(g => g.PrimaryMembers)
              .HasForeignKey(u => u.PrimaryGymId)
-             .OnDelete(DeleteBehavior.SetNull);
+             .OnDelete(DeleteBehavior.ClientSetNull);
 
             e.HasOne(u => u.City)
              .WithMany(c => c.Users)
              .HasForeignKey(u => u.CityId)
-             .OnDelete(DeleteBehavior.SetNull);
+             .OnDelete(DeleteBehavior.ClientSetNull);
         });
 
         // GymFacility
@@ -68,7 +68,7 @@ public class GymDbContext : DbContext
             e.HasOne(m => m.Payment)
              .WithOne(p => p.UserMembership)
              .HasForeignKey<UserMembership>(m => m.PaymentId)
-             .OnDelete(DeleteBehavior.SetNull);
+             .OnDelete(DeleteBehavior.ClientSetNull);
 
             e.HasOne(m => m.Gym)
              .WithMany(g => g.UserMemberships)
@@ -76,12 +76,17 @@ public class GymDbContext : DbContext
              .OnDelete(DeleteBehavior.Restrict);
         });
 
-        // CheckIn – restrict da ne brisanje gym-a ne briše check-in
+        // CheckIn
         modelBuilder.Entity<CheckIn>(e =>
         {
             e.HasOne(c => c.Gym)
              .WithMany(g => g.CheckIns)
              .HasForeignKey(c => c.GymId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(c => c.User)
+             .WithMany(u => u.CheckIns)
+             .HasForeignKey(c => c.UserId)
              .OnDelete(DeleteBehavior.Restrict);
 
             e.Ignore(c => c.DurationMinutes);
@@ -95,12 +100,12 @@ public class GymDbContext : DbContext
             e.HasOne(a => a.ReviewedByAdmin)
              .WithMany()
              .HasForeignKey(a => a.ReviewedByAdminId)
-             .OnDelete(DeleteBehavior.SetNull);
+             .OnDelete(DeleteBehavior.ClientSetNull);
 
             e.HasOne(a => a.User)
              .WithMany(u => u.TrainerApplications)
              .HasForeignKey(a => a.UserId)
-             .OnDelete(DeleteBehavior.Cascade);
+             .OnDelete(DeleteBehavior.Restrict);
         });
 
         // TrainingSession
@@ -128,7 +133,7 @@ public class GymDbContext : DbContext
             e.HasOne(r => r.Payment)
              .WithOne(p => p.SessionReservation)
              .HasForeignKey<SessionReservation>(r => r.PaymentId)
-             .OnDelete(DeleteBehavior.SetNull);
+             .OnDelete(DeleteBehavior.ClientSetNull);
         });
 
         // Payment
