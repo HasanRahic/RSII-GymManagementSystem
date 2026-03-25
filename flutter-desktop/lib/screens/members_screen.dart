@@ -176,7 +176,7 @@ class _MembersScreenState extends State<MembersScreen> {
               SizedBox(
                 width: 180,
                 child: DropdownButtonFormField<String>(
-                  value: _roleFilter,
+                  initialValue: _roleFilter,
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -271,7 +271,7 @@ class _MembersScreenState extends State<MembersScreen> {
                                     DataCell(
                                       Switch(
                                         value: u.isActive,
-                                        activeColor: kGreen,
+                                        activeThumbColor: kGreen,
                                         onChanged: (v) => _toggleActive(u, v),
                                       ),
                                     ),

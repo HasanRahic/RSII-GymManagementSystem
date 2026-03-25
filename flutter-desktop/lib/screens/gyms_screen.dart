@@ -297,8 +297,8 @@ class _GymCard extends StatelessWidget {
                   height: 40,
                   decoration: BoxDecoration(
                     color: gym.isActive
-                        ? kPrimary.withOpacity(0.12)
-                        : Colors.grey.withOpacity(0.12),
+                        ? kPrimary.withValues(alpha: 0.12)
+                        : Colors.grey.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(Icons.fitness_center,
@@ -319,8 +319,8 @@ class _GymCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: gym.isActive
-                        ? kGreen.withOpacity(0.12)
-                        : Colors.orange.withOpacity(0.12),
+                        ? kGreen.withValues(alpha: 0.12)
+                        : Colors.orange.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
