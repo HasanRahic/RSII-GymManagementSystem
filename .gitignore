@@ -7,6 +7,7 @@
 
 # VS / Rider
 .vs/
+.vscode/
 *.user
 *.suo
 .idea/
