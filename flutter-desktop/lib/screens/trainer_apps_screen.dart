@@ -109,50 +109,57 @@ class _TrainerAppsScreenState extends State<TrainerAppsScreen>
         borderRadius: BorderRadius.circular(12),
         side: const BorderSide(color: Color(0xFFE2E8F0)),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowColor: const WidgetStatePropertyAll(Color(0xFFF8FAFC)),
-          columns: const [
-            DataColumn(label: Text('Korisnik')),
-            DataColumn(label: Text('Email')),
-            DataColumn(label: Text('Predano')),
-            DataColumn(label: Text('Status')),
-            DataColumn(label: Text('Napomena')),
-            DataColumn(label: Text('Akcije')),
-          ],
-          rows: rows
-              .map(
-                (a) => DataRow(cells: [
-                  DataCell(Text(a.userFullName)),
-                  DataCell(Text(a.userEmail)),
-                  DataCell(Text(_fmtDt(a.submittedAt))),
-                  DataCell(_statusBadge(a.appStatus)),
-                  DataCell(Text(a.adminNote?.isNotEmpty == true ? a.adminNote! : '-')),
-                  DataCell(
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        OutlinedButton(
-                          onPressed: () => _showDetails(a),
-                          child: const Text('Detalji'),
-                        ),
-                        if (actionable)
-                          ElevatedButton(
-                            onPressed: () => _reviewDialog(a),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: kPrimary,
-                              foregroundColor: Colors.white,
-                            ),
-                            child: const Text('Obradi'),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: DataTable(
+                headingRowColor: const WidgetStatePropertyAll(Color(0xFFF8FAFC)),
+                columns: const [
+                  DataColumn(label: Text('Korisnik')),
+                  DataColumn(label: Text('Email')),
+                  DataColumn(label: Text('Predano')),
+                  DataColumn(label: Text('Status')),
+                  DataColumn(label: Text('Napomena')),
+                  DataColumn(label: Text('Akcije')),
+                ],
+                rows: rows
+                    .map(
+                      (a) => DataRow(cells: [
+                        DataCell(Text(a.userFullName)),
+                        DataCell(Text(a.userEmail)),
+                        DataCell(Text(_fmtDt(a.submittedAt))),
+                        DataCell(_statusBadge(a.appStatus)),
+                        DataCell(Text(a.adminNote?.isNotEmpty == true ? a.adminNote! : '-')),
+                        DataCell(
+                          Wrap(
+                            spacing: 8,
+                            children: [
+                              OutlinedButton(
+                                onPressed: () => _showDetails(a),
+                                child: const Text('Detalji'),
+                              ),
+                              if (actionable)
+                                ElevatedButton(
+                                  onPressed: () => _reviewDialog(a),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: kPrimary,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                  child: const Text('Obradi'),
+                                ),
+                            ],
                           ),
-                      ],
-                    ),
-                  ),
-                ]),
-              )
-              .toList(),
-        ),
+                        ),
+                      ]),
+                    )
+                    .toList(),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

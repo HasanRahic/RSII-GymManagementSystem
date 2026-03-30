@@ -152,38 +152,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   padding: EdgeInsets.all(32),
                   child: Center(child: Text('Nema check-ina')),
                 )
-              : ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: DataTable(
-                    headingRowColor: WidgetStateProperty.all(
-                        const Color(0xFFF8FAFC)),
-                    columns: const [
-                      DataColumn(label: Text('Član')),
-                      DataColumn(label: Text('Teretana')),
-                      DataColumn(label: Text('Dolazak')),
-                      DataColumn(label: Text('Odlazak')),
-                      DataColumn(label: Text('Trajanje')),
-                    ],
-                    rows: _recentCheckIns.map((c) {
-                      final checkIn = _fmtDt(c.checkInTime);
-                      final checkOut =
-                          c.checkOutTime != null ? _fmtDt(c.checkOutTime!) : '-';
-                      final dur = c.durationMinutes != null
-                          ? '${c.durationMinutes} min'
-                          : 'Aktivan';
-                      return DataRow(cells: [
-                        DataCell(Text(c.userFullName)),
-                        DataCell(Text(c.gymName)),
-                        DataCell(Text(checkIn)),
-                        DataCell(Text(checkOut)),
-                        DataCell(Text(dur,
-                            style: TextStyle(
-                                color: c.durationMinutes == null
-                                    ? kGreen
-                                    : null))),
-                      ]);
-                    }).toList(),
-                  ),
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: DataTable(
+                            headingRowColor: WidgetStateProperty.all(
+                                const Color(0xFFF8FAFC)),
+                            columns: const [
+                              DataColumn(label: Text('Član')),
+                              DataColumn(label: Text('Teretana')),
+                              DataColumn(label: Text('Dolazak')),
+                              DataColumn(label: Text('Odlazak')),
+                              DataColumn(label: Text('Trajanje')),
+                            ],
+                            rows: _recentCheckIns.map((c) {
+                              final checkIn = _fmtDt(c.checkInTime);
+                              final checkOut =
+                                  c.checkOutTime != null ? _fmtDt(c.checkOutTime!) : '-';
+                              final dur = c.durationMinutes != null
+                                  ? '${c.durationMinutes} min'
+                                  : 'Aktivan';
+                              return DataRow(cells: [
+                                DataCell(Text(c.userFullName)),
+                                DataCell(Text(c.gymName)),
+                                DataCell(Text(checkIn)),
+                                DataCell(Text(checkOut)),
+                                DataCell(Text(dur,
+                                    style: TextStyle(
+                                        color: c.durationMinutes == null
+                                            ? kGreen
+                                            : null))),
+                              ]);
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
         ),
       ],

@@ -14,7 +14,47 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> tryAutoLogin() async {
     final hasToken = await ApiClient.loadToken();
-    return hasToken;
+    if (!hasToken) return false;
+
+    try {
+      final me = await ApiClient.get('/users/me') as Map<String, dynamic>;
+      final roleRaw = me['role'];
+      final role = roleRaw is int
+          ? roleRaw
+          : (roleRaw is String
+              ? _roleFromString(roleRaw)
+              : 0);
+
+      _user = AuthResponse(
+        id: me['id'],
+        firstName: me['firstName'],
+        lastName: me['lastName'],
+        username: me['username'],
+        email: me['email'],
+        role: role,
+        token: ApiClient.currentToken ?? '',
+      );
+      notifyListeners();
+      return true;
+    } catch (_) {
+      await ApiClient.setToken(null);
+      _user = null;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  int _roleFromString(String role) {
+    switch (role.toLowerCase()) {
+      case 'admin':
+        return 0;
+      case 'member':
+        return 1;
+      case 'trainer':
+        return 2;
+      default:
+        return 0;
+    }
   }
 
   Future<void> login(String username, String password) async {

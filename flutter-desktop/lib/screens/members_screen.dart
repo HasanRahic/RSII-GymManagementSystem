@@ -225,68 +225,78 @@ class _MembersScreenState extends State<MembersScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : _users.isEmpty
                       ? const Center(child: Text('Nema korisnika za prikaz.'))
-                      : SingleChildScrollView(
-                          padding: const EdgeInsets.all(10),
-                          child: DataTable(
-                            headingRowColor: const WidgetStatePropertyAll(
-                              Color(0xFFF8FAFC),
-                            ),
-                            columns: const [
-                              DataColumn(label: Text('Korisnik')),
-                              DataColumn(label: Text('Email')),
-                              DataColumn(label: Text('Uloga')),
-                              DataColumn(label: Text('Grad')),
-                              DataColumn(label: Text('Aktivan')),
-                              DataColumn(label: Text('Akcije')),
-                            ],
-                            rows: _users
-                                .map(
-                                  (u) => DataRow(cells: [
-                                    DataCell(
-                                      Row(
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 15,
-                                            backgroundColor:
-                                                kPrimary.withValues(alpha: 0.12),
-                                            child: Text(
-                                              (u.firstName.isNotEmpty
-                                                      ? u.firstName[0]
-                                                      : '?')
-                                                  .toUpperCase(),
-                                              style: const TextStyle(
-                                                color: kPrimary,
-                                                fontWeight: FontWeight.w700,
+                      : LayoutBuilder(
+                          builder: (context, constraints) {
+                            return SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(10),
+                                  child: DataTable(
+                                    headingRowColor: const WidgetStatePropertyAll(
+                                      Color(0xFFF8FAFC),
+                                    ),
+                                    columns: const [
+                                      DataColumn(label: Text('Korisnik')),
+                                      DataColumn(label: Text('Email')),
+                                      DataColumn(label: Text('Uloga')),
+                                      DataColumn(label: Text('Grad')),
+                                      DataColumn(label: Text('Aktivan')),
+                                      DataColumn(label: Text('Akcije')),
+                                    ],
+                                    rows: _users
+                                        .map(
+                                          (u) => DataRow(cells: [
+                                            DataCell(
+                                              Row(
+                                                children: [
+                                                  CircleAvatar(
+                                                    radius: 15,
+                                                    backgroundColor:
+                                                        kPrimary.withValues(alpha: 0.12),
+                                                    child: Text(
+                                                      (u.firstName.isNotEmpty
+                                                              ? u.firstName[0]
+                                                              : '?')
+                                                          .toUpperCase(),
+                                                      style: const TextStyle(
+                                                        color: kPrimary,
+                                                        fontWeight: FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Text(u.fullName),
+                                                ],
                                               ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Text(u.fullName),
-                                        ],
-                                      ),
-                                    ),
-                                    DataCell(Text(u.email)),
-                                    DataCell(_RoleChip(role: u.roleLabel)),
-                                    DataCell(Text(u.cityName ?? '-')),
-                                    DataCell(
-                                      Switch(
-                                        value: u.isActive,
-                                        activeThumbColor: kGreen,
-                                        onChanged: (v) => _toggleActive(u, v),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      TextButton.icon(
-                                        onPressed: () => _showDetails(u),
-                                        icon: const Icon(Icons.visibility_outlined,
-                                            size: 17),
-                                        label: const Text('Pregled'),
-                                      ),
-                                    ),
-                                  ]),
-                                )
-                                .toList(),
-                          ),
+                                            DataCell(Text(u.email)),
+                                            DataCell(_RoleChip(role: u.roleLabel)),
+                                            DataCell(Text(u.cityName ?? '-')),
+                                            DataCell(
+                                              Switch(
+                                                value: u.isActive,
+                                                activeThumbColor: kGreen,
+                                                onChanged: (v) => _toggleActive(u, v),
+                                              ),
+                                            ),
+                                            DataCell(
+                                              TextButton.icon(
+                                                onPressed: () => _showDetails(u),
+                                                icon: const Icon(Icons.visibility_outlined,
+                                                    size: 17),
+                                                label: const Text('Pregled'),
+                                              ),
+                                            ),
+                                          ]),
+                                        )
+                                        .toList(),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
             ),
           ),

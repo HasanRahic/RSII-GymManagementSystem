@@ -189,29 +189,36 @@ class _ReportsScreenState extends State<ReportsScreen> {
         borderRadius: BorderRadius.circular(12),
         side: const BorderSide(color: Color(0xFFE2E8F0)),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowColor: const WidgetStatePropertyAll(Color(0xFFF8FAFC)),
-          columns: const [
-            DataColumn(label: Text('Član')),
-            DataColumn(label: Text('Teretana')),
-            DataColumn(label: Text('Dolazak')),
-            DataColumn(label: Text('Odlazak')),
-            DataColumn(label: Text('Trajanje')),
-          ],
-          rows: _rows
-              .map(
-                (c) => DataRow(cells: [
-                  DataCell(Text(c.userFullName)),
-                  DataCell(Text(c.gymName)),
-                  DataCell(Text(_fmtDt(c.checkInTime))),
-                  DataCell(Text(c.checkOutTime == null ? '-' : _fmtDt(c.checkOutTime!))),
-                  DataCell(Text(c.durationMinutes == null ? 'Aktivan' : '${c.durationMinutes} min')),
-                ]),
-              )
-              .toList(),
-        ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: DataTable(
+                headingRowColor: const WidgetStatePropertyAll(Color(0xFFF8FAFC)),
+                columns: const [
+                  DataColumn(label: Text('Član')),
+                  DataColumn(label: Text('Teretana')),
+                  DataColumn(label: Text('Dolazak')),
+                  DataColumn(label: Text('Odlazak')),
+                  DataColumn(label: Text('Trajanje')),
+                ],
+                rows: _rows
+                    .map(
+                      (c) => DataRow(cells: [
+                        DataCell(Text(c.userFullName)),
+                        DataCell(Text(c.gymName)),
+                        DataCell(Text(_fmtDt(c.checkInTime))),
+                        DataCell(Text(c.checkOutTime == null ? '-' : _fmtDt(c.checkOutTime!))),
+                        DataCell(Text(c.durationMinutes == null ? 'Aktivan' : '${c.durationMinutes} min')),
+                      ]),
+                    )
+                    .toList(),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

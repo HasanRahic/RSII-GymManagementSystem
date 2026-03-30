@@ -27,13 +27,13 @@ class AuthResponse {
   });
 
   factory AuthResponse.fromJson(Map<String, dynamic> j) => AuthResponse(
-        id: j['id'],
-        firstName: j['firstName'],
-        lastName: j['lastName'],
-        username: j['username'],
-        email: j['email'],
-        role: j['role'],
-        token: j['token'],
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        firstName: (j['firstName'] ?? '').toString(),
+        lastName: (j['lastName'] ?? '').toString(),
+        username: (j['username'] ?? '').toString(),
+        email: (j['email'] ?? '').toString(),
+        role: (j['role'] as num?)?.toInt() ?? 0,
+        token: (j['token'] ?? '').toString(),
       );
 
   String get fullName => '$firstName $lastName';
@@ -76,20 +76,20 @@ class UserModel {
   });
 
   factory UserModel.fromJson(Map<String, dynamic> j) => UserModel(
-        id: j['id'],
-        firstName: j['firstName'],
-        lastName: j['lastName'],
-        username: j['username'],
-        email: j['email'],
-        phoneNumber: j['phoneNumber'],
-        dateOfBirth: j['dateOfBirth'],
-        role: j['role'],
-        isActive: j['isActive'],
-        profileImageUrl: j['profileImageUrl'],
-        cityId: j['cityId'],
-        cityName: j['cityName'],
-        primaryGymId: j['primaryGymId'],
-        primaryGymName: j['primaryGymName'],
+      id: (j['id'] as num?)?.toInt() ?? 0,
+      firstName: (j['firstName'] ?? '').toString(),
+      lastName: (j['lastName'] ?? '').toString(),
+      username: (j['username'] ?? '').toString(),
+      email: (j['email'] ?? '').toString(),
+      phoneNumber: j['phoneNumber']?.toString(),
+      dateOfBirth: j['dateOfBirth']?.toString(),
+      role: (j['role'] as num?)?.toInt() ?? 0,
+      isActive: j['isActive'] == true,
+      profileImageUrl: j['profileImageUrl']?.toString(),
+      cityId: (j['cityId'] as num?)?.toInt(),
+      cityName: j['cityName']?.toString(),
+      primaryGymId: (j['primaryGymId'] as num?)?.toInt(),
+      primaryGymName: j['primaryGymName']?.toString(),
       );
 
   String get fullName => '$firstName $lastName';
@@ -141,23 +141,23 @@ class GymModel {
   });
 
   factory GymModel.fromJson(Map<String, dynamic> j) => GymModel(
-        id: j['id'],
-        name: j['name'],
-        address: j['address'],
-        description: j['description'],
-        phoneNumber: j['phoneNumber'],
-        email: j['email'],
-        imageUrl: j['imageUrl'],
-        openTime: j['openTime'],
-        closeTime: j['closeTime'],
-        capacity: j['capacity'],
-        currentOccupancy: j['currentOccupancy'],
-        status: j['status'],
-        latitude: (j['latitude'] as num).toDouble(),
-        longitude: (j['longitude'] as num).toDouble(),
-        cityId: j['cityId'],
-        cityName: j['cityName'],
-        countryName: j['countryName'],
+      id: (j['id'] as num?)?.toInt() ?? 0,
+      name: (j['name'] ?? '').toString(),
+      address: (j['address'] ?? '').toString(),
+      description: j['description']?.toString(),
+      phoneNumber: (j['phoneNumber'] ?? '').toString(),
+      email: (j['email'] ?? '').toString(),
+      imageUrl: j['imageUrl']?.toString(),
+      openTime: (j['openTime'] ?? '').toString(),
+      closeTime: (j['closeTime'] ?? '').toString(),
+      capacity: (j['capacity'] as num?)?.toInt() ?? 0,
+      currentOccupancy: (j['currentOccupancy'] as num?)?.toInt() ?? 0,
+      status: (j['status'] as num?)?.toInt() ?? 0,
+      latitude: (j['latitude'] as num?)?.toDouble() ?? 0,
+      longitude: (j['longitude'] as num?)?.toDouble() ?? 0,
+      cityId: (j['cityId'] as num?)?.toInt() ?? 0,
+      cityName: (j['cityName'] ?? '').toString(),
+      countryName: (j['countryName'] ?? '').toString(),
       );
 
   bool get isActive => status == 0;
@@ -190,14 +190,14 @@ class MembershipPlan {
   });
 
   factory MembershipPlan.fromJson(Map<String, dynamic> j) => MembershipPlan(
-        id: j['id'],
-        name: j['name'],
-        description: j['description'],
-        durationDays: j['durationDays'],
-        price: (j['price'] as num).toDouble(),
-        isActive: j['isActive'],
-        gymId: j['gymId'],
-        gymName: j['gymName'],
+      id: (j['id'] as num?)?.toInt() ?? 0,
+      name: (j['name'] ?? '').toString(),
+      description: j['description']?.toString(),
+      durationDays: (j['durationDays'] as num?)?.toInt() ?? 0,
+      price: (j['price'] as num?)?.toDouble() ?? 0,
+      isActive: j['isActive'] == true,
+      gymId: (j['gymId'] as num?)?.toInt() ?? 0,
+      gymName: (j['gymName'] ?? '').toString(),
       );
 }
 
@@ -233,19 +233,19 @@ class UserMembership {
   });
 
   factory UserMembership.fromJson(Map<String, dynamic> j) => UserMembership(
-        id: j['id'],
-        userId: j['userId'],
-        fullName: j['fullName'],
-        membershipPlanId: j['membershipPlanId'],
-        planName: j['planName'],
-        gymId: j['gymId'],
-        gymName: j['gymName'],
-        startDate: j['startDate'],
-        endDate: j['endDate'],
-        price: (j['price'] as num).toDouble(),
-        discountPercent: (j['discountPercent'] as num).toDouble(),
-        status: j['status'],
-        daysRemaining: j['daysRemaining'],
+      id: (j['id'] as num?)?.toInt() ?? 0,
+      userId: (j['userId'] as num?)?.toInt() ?? 0,
+      fullName: (j['fullName'] ?? '').toString(),
+      membershipPlanId: (j['membershipPlanId'] as num?)?.toInt() ?? 0,
+      planName: (j['planName'] ?? '').toString(),
+      gymId: (j['gymId'] as num?)?.toInt() ?? 0,
+      gymName: (j['gymName'] ?? '').toString(),
+      startDate: (j['startDate'] ?? '').toString(),
+      endDate: (j['endDate'] ?? '').toString(),
+      price: (j['price'] as num?)?.toDouble() ?? 0,
+      discountPercent: (j['discountPercent'] as num?)?.toDouble() ?? 0,
+      status: (j['status'] as num?)?.toInt() ?? 0,
+      daysRemaining: (j['daysRemaining'] as num?)?.toInt() ?? 0,
       );
 
   MembershipStatus get membershipStatus => MembershipStatus.values[status];
@@ -277,14 +277,14 @@ class CheckInModel {
   });
 
   factory CheckInModel.fromJson(Map<String, dynamic> j) => CheckInModel(
-        id: j['id'],
-        userId: j['userId'],
-        userFullName: j['userFullName'],
-        gymId: j['gymId'],
-        gymName: j['gymName'],
-        checkInTime: j['checkInTime'],
-        checkOutTime: j['checkOutTime'],
-        durationMinutes: j['durationMinutes'],
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        userId: (j['userId'] as num?)?.toInt() ?? 0,
+        userFullName: (j['userFullName'] ?? '').toString(),
+        gymId: (j['gymId'] as num?)?.toInt() ?? 0,
+        gymName: (j['gymName'] ?? '').toString(),
+        checkInTime: (j['checkInTime'] ?? '').toString(),
+        checkOutTime: j['checkOutTime']?.toString(),
+        durationMinutes: (j['durationMinutes'] as num?)?.toInt(),
       );
 }
 
@@ -321,18 +321,18 @@ class TrainerApplication {
 
   factory TrainerApplication.fromJson(Map<String, dynamic> j) =>
       TrainerApplication(
-        id: j['id'],
-        userId: j['userId'],
-        userFullName: j['userFullName'],
-        userEmail: j['userEmail'],
-        biography: j['biography'],
-        experience: j['experience'],
-        certifications: j['certifications'],
-        availability: j['availability'],
-        status: j['status'],
-        adminNote: j['adminNote'],
-        submittedAt: j['submittedAt'],
-        reviewedAt: j['reviewedAt'],
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        userId: (j['userId'] as num?)?.toInt() ?? 0,
+        userFullName: (j['userFullName'] ?? '').toString(),
+        userEmail: (j['userEmail'] ?? '').toString(),
+        biography: j['biography']?.toString(),
+        experience: j['experience']?.toString(),
+        certifications: j['certifications']?.toString(),
+        availability: j['availability']?.toString(),
+        status: (j['status'] as num?)?.toInt() ?? 0,
+        adminNote: j['adminNote']?.toString(),
+        submittedAt: (j['submittedAt'] ?? '').toString(),
+        reviewedAt: j['reviewedAt']?.toString(),
       );
 
   AppStatus get appStatus => AppStatus.values[status];
@@ -358,12 +358,13 @@ class DashboardStats {
   });
 
   factory DashboardStats.fromJson(Map<String, dynamic> j) => DashboardStats(
-        totalMembers: j['totalMembers'],
-        activeMemberships: j['activeMemberships'],
-        totalCheckInsToday: j['totalCheckInsToday'],
-        currentOccupancy: j['currentOccupancy'],
-        revenueThisMonth: (j['revenueThisMonth'] as num).toDouble(),
-        pendingTrainerApplications: j['pendingTrainerApplications'],
+        totalMembers: (j['totalMembers'] as num?)?.toInt() ?? 0,
+        activeMemberships: (j['activeMemberships'] as num?)?.toInt() ?? 0,
+        totalCheckInsToday: (j['totalCheckInsToday'] as num?)?.toInt() ?? 0,
+        currentOccupancy: (j['currentOccupancy'] as num?)?.toInt() ?? 0,
+        revenueThisMonth: (j['revenueThisMonth'] as num?)?.toDouble() ?? 0,
+        pendingTrainerApplications:
+            (j['pendingTrainerApplications'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -374,5 +375,8 @@ class ReferenceItem {
   final String name;
   ReferenceItem({required this.id, required this.name});
   factory ReferenceItem.fromJson(Map<String, dynamic> j) =>
-      ReferenceItem(id: j['id'], name: j['name']);
+      ReferenceItem(
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        name: (j['name'] ?? '').toString(),
+      );
 }

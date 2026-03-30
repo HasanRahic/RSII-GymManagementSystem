@@ -160,7 +160,7 @@ class _Sidebar extends StatelessWidget {
                   radius: 18,
                   backgroundColor: kPrimary,
                   child: Text(
-                    user.firstName[0].toUpperCase(),
+                    _initialFor(user.firstName),
                     style: const TextStyle(
                         color: Colors.white, fontWeight: FontWeight.bold),
                   ),
@@ -192,6 +192,12 @@ class _Sidebar extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _initialFor(dynamic value) {
+    final text = (value ?? '').toString().trim();
+    if (text.isEmpty) return '?';
+    return text[0].toUpperCase();
   }
 }
 
