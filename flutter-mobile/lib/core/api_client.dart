@@ -27,6 +27,14 @@ class ApiClient {
         if (_token != null) 'Authorization': 'Bearer $_token',
       };
 
+  static Future<dynamic> get(String path) async {
+    final resp = await http.get(
+      Uri.parse('$kApiBase$path'),
+      headers: _headers,
+    );
+    return _handle(resp);
+  }
+
   static Future<dynamic> post(String path, Map<String, dynamic> body) async {
     final resp = await http.post(
       Uri.parse('$kApiBase$path'),
