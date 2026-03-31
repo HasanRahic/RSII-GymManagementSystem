@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/constants.dart';
 import '../providers/auth_provider.dart';
+import 'checkin_screen.dart';
+import 'my_memberships_screen.dart';
+import 'checkin_history_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -61,20 +64,38 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          const _QuickTile(
+          _QuickTile(
             icon: Icons.credit_card,
             title: 'Moja clanarina',
             subtitle: 'Pregled statusa i trajanja',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (ctx) => const MyMembershipsScreen(),
+              ),
+            ),
           ),
-          const _QuickTile(
-            icon: Icons.qr_code_scanner,
+          _QuickTile(
+            icon: Icons.login,
             title: 'Check-in',
             subtitle: 'Brzi ulazak u teretanu',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (ctx) => const CheckInScreen(),
+              ),
+            ),
           ),
-          const _QuickTile(
+          _QuickTile(
             icon: Icons.history,
-            title: 'Historija dolazaka',
+            title: 'Istorija dolazaka',
             subtitle: 'Pregled prethodnih posjeta',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (ctx) => const CheckInHistoryScreen(),
+              ),
+            ),
           ),
         ],
       ),
@@ -86,30 +107,35 @@ class _QuickTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
+  final VoidCallback onTap;
 
   const _QuickTile({
     required this.icon,
     required this.title,
     required this.subtitle,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0xFFE2E8F0)),
-      ),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: kPrimary.withValues(alpha: 0.12),
-          child: Icon(icon, color: kPrimary),
+    return GestureDetector(
+      onTap: onTap,
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: Color(0xFFE2E8F0)),
         ),
-        title: Text(title),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.chevron_right),
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundColor: kPrimary.withValues(alpha: 0.12),
+            child: Icon(icon, color: kPrimary),
+          ),
+          title: Text(title),
+          subtitle: Text(subtitle),
+          trailing: const Icon(Icons.chevron_right),
+        ),
       ),
     );
   }
