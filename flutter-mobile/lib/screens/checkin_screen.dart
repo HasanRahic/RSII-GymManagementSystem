@@ -4,10 +4,6 @@ import '../core/constants.dart';
 import '../models/models.dart';
 import '../services/api_services.dart';
 
-const kGreen = Color(0xFF10B981);
-const kRed = Color(0xFFEF4444);
-const kPrimary = Color(0xFF3B82F6);
-
 class CheckInScreen extends StatefulWidget {
   const CheckInScreen({super.key});
 

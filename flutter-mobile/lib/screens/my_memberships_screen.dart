@@ -4,9 +4,6 @@ import '../core/constants.dart';
 import '../models/models.dart';
 import '../services/api_services.dart';
 
-const kGreen = Color(0xFF10B981);
-const kRed = Color(0xFFEF4444);
-
 class MyMembershipsScreen extends StatefulWidget {
   const MyMembershipsScreen({super.key});
 
