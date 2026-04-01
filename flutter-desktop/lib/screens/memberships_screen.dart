@@ -158,7 +158,7 @@ class _MembershipsScreenState extends State<MembershipsScreen>
               DataColumn(label: Text('Teretana')),
               DataColumn(label: Text('Plan')),
               DataColumn(label: Text('Početak')),
-              DataColumn(label: Text('Istiek')),
+              DataColumn(label: Text('Istek')),
               DataColumn(label: Text('Status')),
               DataColumn(label: Text('Dana')),
             ],
