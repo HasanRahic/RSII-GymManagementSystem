@@ -141,7 +141,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
             // Aktivni check-in status
             if (_activeCheckIn != null) ...[
               Card(
-                color: kGreen.withOpacity(0.1),
+                color: kGreen.withValues(alpha: 0.1),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -191,7 +191,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
               ),
             ] else ...[
               Card(
-                color: kPrimary.withOpacity(0.1),
+                color: kPrimary.withValues(alpha: 0.1),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -222,7 +222,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                       ),
                       const SizedBox(height: 20),
                       DropdownButtonFormField<int>(
-                        value: _selectedGymId,
+                        initialValue: _selectedGymId,
                         decoration: InputDecoration(
                           labelText: 'Izaberite teretanu',
                           border: OutlineInputBorder(

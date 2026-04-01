@@ -6,6 +6,8 @@ import 'constants.dart';
 class ApiClient {
   static String? _token;
 
+  static String? get currentToken => _token;
+
   static Future<void> setToken(String? token) async {
     _token = token;
     final prefs = await SharedPreferences.getInstance();

@@ -13,7 +13,35 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoggedIn => _user != null;
 
   Future<bool> tryAutoLogin() async {
-    return ApiClient.loadToken();
+    final hasToken = await ApiClient.loadToken();
+    if (!hasToken) {
+      _user = null;
+      notifyListeners();
+      return false;
+    }
+
+    try {
+      final data = await ApiClient.get('/users/me');
+      final token = ApiClient.currentToken;
+      if (token == null) return false;
+
+      _user = AuthResponse(
+        id: data['id'],
+        firstName: data['firstName'] ?? '',
+        lastName: data['lastName'] ?? '',
+        username: data['username'] ?? '',
+        email: data['email'] ?? '',
+        role: data['role'] ?? 0,
+        token: token,
+      );
+      notifyListeners();
+      return true;
+    } catch (_) {
+      await ApiClient.setToken(null);
+      _user = null;
+      notifyListeners();
+      return false;
+    }
   }
 
   Future<void> login(String username, String password) async {

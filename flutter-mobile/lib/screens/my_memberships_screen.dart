@@ -108,8 +108,8 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
                                       vertical: 6,
                                     ),
                                     decoration: BoxDecoration(
-                                      color:
-                                          _statusColor(m.status).withOpacity(0.1),
+                                        color:
+                                          _statusColor(m.status).withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(20),
                                       border: Border.all(
                                         color: _statusColor(m.status),
@@ -167,7 +167,7 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: Colors.blue.withOpacity(0.1),
+                                  color: Colors.blue.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Row(
