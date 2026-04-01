@@ -118,6 +118,14 @@ class _MembersScreenState extends State<MembersScreen> {
           ),
         ),
         actions: [
+          TextButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showEditDialog(u);
+            },
+            icon: const Icon(Icons.edit_outlined),
+            label: const Text('Uredi'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Zatvori'),
@@ -125,6 +133,203 @@ class _MembersScreenState extends State<MembersScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _showEditDialog(UserModel user) async {
+    try {
+      final results = await Future.wait([
+        ReferenceService.getCities(),
+        GymService.getAll(),
+      ]);
+      if (!mounted) return;
+
+      final cities = results[0] as List<ReferenceItem>;
+      final gyms = results[1] as List<GymModel>;
+
+      final firstNameCtrl = TextEditingController(text: user.firstName);
+      final lastNameCtrl = TextEditingController(text: user.lastName);
+      final phoneCtrl = TextEditingController(text: user.phoneNumber ?? '');
+      final imageCtrl = TextEditingController(text: user.profileImageUrl ?? '');
+      final dobCtrl = TextEditingController(
+        text: user.dateOfBirth != null ? user.dateOfBirth!.substring(0, 10) : '',
+      );
+      final formKey = GlobalKey<FormState>();
+      int? selectedCityId = user.cityId;
+      int? selectedGymId = user.primaryGymId;
+      DateTime? selectedDob = user.dateOfBirth != null
+          ? DateTime.tryParse(user.dateOfBirth!)
+          : null;
+
+      final saved = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: Text('Uredi korisnika #${user.id}'),
+            content: SizedBox(
+              width: 560,
+              child: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: firstNameCtrl,
+                        decoration: const InputDecoration(labelText: 'Ime'),
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Obavezno polje'
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: lastNameCtrl,
+                        decoration: const InputDecoration(labelText: 'Prezime'),
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Obavezno polje'
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: phoneCtrl,
+                        decoration: const InputDecoration(labelText: 'Telefon'),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: dobCtrl,
+                        readOnly: true,
+                        decoration: InputDecoration(
+                          labelText: 'Datum rođenja',
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.calendar_month),
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: ctx,
+                                initialDate: selectedDob ?? DateTime.now(),
+                                firstDate: DateTime(1950),
+                                lastDate: DateTime.now(),
+                              );
+                              if (picked == null) return;
+                              setDialogState(() {
+                                selectedDob = picked;
+                                dobCtrl.text =
+                                    '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<int>(
+                        initialValue: selectedCityId,
+                        decoration: const InputDecoration(labelText: 'Grad'),
+                        items: cities
+                            .map(
+                              (c) => DropdownMenuItem<int>(
+                                value: c.id,
+                                child: Text(c.name),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) => setDialogState(() => selectedCityId = v),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<int>(
+                        initialValue: selectedGymId,
+                        decoration: const InputDecoration(labelText: 'Primarna teretana'),
+                        items: [
+                          const DropdownMenuItem<int>(
+                            value: null,
+                            child: Text('Nije postavljeno'),
+                          ),
+                          ...gyms.map(
+                            (g) => DropdownMenuItem<int>(
+                              value: g.id,
+                              child: Text(g.name),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) => setDialogState(() => selectedGymId = v),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: imageCtrl,
+                        decoration: const InputDecoration(labelText: 'URL slike profila'),
+                      ),
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Korisničko ime i email se ne mijenjaju iz ovog ekrana.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Otkaži'),
+              ),
+              FilledButton.icon(
+                onPressed: () async {
+                  if (!formKey.currentState!.validate()) return;
+                  try {
+                    await UserService.update(
+                      user.id,
+                      {
+                        'firstName': firstNameCtrl.text.trim(),
+                        'lastName': lastNameCtrl.text.trim(),
+                        'phoneNumber': phoneCtrl.text.trim().isEmpty
+                            ? null
+                            : phoneCtrl.text.trim(),
+                        'dateOfBirth': selectedDob?.toIso8601String(),
+                        'cityId': selectedCityId,
+                        'primaryGymId': selectedGymId,
+                        'profileImageUrl': imageCtrl.text.trim().isEmpty
+                            ? null
+                            : imageCtrl.text.trim(),
+                      },
+                    );
+                    if (!ctx.mounted) return;
+                    Navigator.pop(ctx, true);
+                  } catch (e) {
+                    if (!ctx.mounted) return;
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(content: Text(e.toString()), backgroundColor: kRed),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Sačuvaj'),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (saved == true) {
+        await _load();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Korisnik je ažuriran.'),
+            backgroundColor: kGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString()), backgroundColor: kRed),
+      );
+    }
   }
 
   Widget _detailRow(String label, String value) {

@@ -55,6 +55,11 @@ class UserService {
     return UserModel.fromJson(data);
   }
 
+  static Future<UserModel> update(int id, Map<String, dynamic> dto) async {
+    final data = await ApiClient.put('/users/$id', dto);
+    return UserModel.fromJson(data);
+  }
+
   static Future<void> setActive(int id, bool isActive) async {
     await ApiClient.patch('/users/$id/active?isActive=$isActive');
   }
