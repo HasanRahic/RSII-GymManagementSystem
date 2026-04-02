@@ -60,6 +60,7 @@ class GymModel {
 
 class UserMembership {
   final int id;
+  final int membershipPlanId;
   final String planName;
   final String gymName;
   final String startDate;
@@ -70,6 +71,7 @@ class UserMembership {
 
   UserMembership({
     required this.id,
+    required this.membershipPlanId,
     required this.planName,
     required this.gymName,
     required this.startDate,
@@ -82,6 +84,7 @@ class UserMembership {
   factory UserMembership.fromJson(Map<String, dynamic> j) {
     return UserMembership(
       id: j['id'],
+      membershipPlanId: j['membershipPlanId'],
       planName: j['planName'],
       gymName: j['gymName'],
       startDate: j['startDate'],

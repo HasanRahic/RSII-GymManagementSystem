@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../core/constants.dart';
+import 'package:provider/provider.dart';
 import '../models/models.dart';
+import '../providers/auth_provider.dart';
 import '../services/api_services.dart';
 
 class MyMembershipsScreen extends StatefulWidget {
@@ -54,6 +56,99 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
         return kRed;
       default:
         return Colors.grey;
+    }
+  }
+
+  Future<void> _renewMembership(UserMembership membership) async {
+    final auth = context.read<AuthProvider>();
+    final user = auth.user;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Korisnik nije prijavljen.'), backgroundColor: kRed),
+      );
+      return;
+    }
+
+    final discountCtrl = TextEditingController(text: '0');
+    final formKey = GlobalKey<FormState>();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Obnovi: ${membership.planName}'),
+        content: SizedBox(
+          width: 420,
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Teretana: ${membership.gymName}',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: discountCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Popust %',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) {
+                    final value = double.tryParse((v ?? '').replaceAll(',', '.'));
+                    if (value == null) return 'Unesite broj';
+                    if (value < 0 || value > 100) return 'Popust mora biti 0-100';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Obnova koristi isti plan i otvara novu aktivnu članarinu.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Otkaži'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              if (!formKey.currentState!.validate()) return;
+              Navigator.pop(ctx, true);
+            },
+            icon: const Icon(Icons.refresh),
+            label: const Text('Obnovi'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await MembershipService.renew(
+        userId: user.id,
+        membershipPlanId: membership.membershipPlanId,
+        discountPercent: double.parse(discountCtrl.text.replaceAll(',', '.')),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Članarina je obnovljena.'),
+          backgroundColor: kGreen,
+        ),
+      );
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString()), backgroundColor: kRed),
+      );
     }
   }
 
@@ -199,6 +294,15 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
                                 style: const TextStyle(
                                   fontSize: 14,
                                   color: Color(0xFF64748B),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: () => _renewMembership(m),
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Obnovi ovu članarinu'),
                                 ),
                               ),
                             ],

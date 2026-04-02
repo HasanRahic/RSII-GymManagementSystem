@@ -22,6 +22,19 @@ class MembershipService {
       return null;
     }
   }
+
+  static Future<UserMembership> renew({
+    required int userId,
+    required int membershipPlanId,
+    double discountPercent = 0,
+  }) async {
+    final data = await ApiClient.post('/memberships/renew', {
+      'userId': userId,
+      'membershipPlanId': membershipPlanId,
+      'discountPercent': discountPercent,
+    });
+    return UserMembership.fromJson(data);
+  }
 }
 
 class CheckInService {
