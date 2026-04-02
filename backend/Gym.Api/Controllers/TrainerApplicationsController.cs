@@ -30,10 +30,15 @@ public class TrainerApplicationsController(ITrainerApplicationService trainerApp
     {
         var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
-        var result = await trainerAppService.CreateAsync(userId, dto);
-        return result is null
-            ? BadRequest(new { message = "Pending application already exists." })
-            : Ok(result);
+        try
+        {
+            var result = await trainerAppService.CreateAsync(userId, dto);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpPatch("{id:int}/review")]

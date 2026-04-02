@@ -63,6 +63,7 @@ services:
       RabbitMQ__NotificationsQueue: "gym.notifications"
       Stripe__SecretKey: "${STRIPE_SECRET_KEY:-sk_test_placeholder}"
       Stripe__PublishableKey: "${STRIPE_PUBLISHABLE_KEY:-pk_test_placeholder}"
+      Stripe__WebhookSecret: "${STRIPE_WEBHOOK_SECRET:-whsec_placeholder}"
     depends_on:
       sqlserver:
         condition: service_healthy

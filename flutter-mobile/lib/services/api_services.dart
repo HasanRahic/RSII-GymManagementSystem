@@ -61,3 +61,20 @@ class CheckInService {
     return data.map((e) => CheckInModel.fromJson(e)).toList();
   }
 }
+
+class TrainerApplicationService {
+  static Future<TrainerApplicationModel> apply({
+    required String biography,
+    required String experience,
+    String? certifications,
+    String? availability,
+  }) async {
+    final data = await ApiClient.post('/trainer-applications', {
+      'biography': biography,
+      'experience': experience,
+      'certifications': certifications,
+      'availability': availability,
+    });
+    return TrainerApplicationModel.fromJson(data as Map<String, dynamic>);
+  }
+}

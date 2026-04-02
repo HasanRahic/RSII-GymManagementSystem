@@ -99,6 +99,56 @@ class UserMembership {
   String get statusLabel => statusLabels[status];
 }
 
+class TrainerApplicationModel {
+  final int id;
+  final int userId;
+  final String userFullName;
+  final String userEmail;
+  final String biography;
+  final String experience;
+  final String? certifications;
+  final String? availability;
+  final int status;
+  final String? adminNote;
+  final String submittedAt;
+  final String? reviewedAt;
+
+  TrainerApplicationModel({
+    required this.id,
+    required this.userId,
+    required this.userFullName,
+    required this.userEmail,
+    required this.biography,
+    required this.experience,
+    required this.certifications,
+    required this.availability,
+    required this.status,
+    required this.adminNote,
+    required this.submittedAt,
+    required this.reviewedAt,
+  });
+
+  factory TrainerApplicationModel.fromJson(Map<String, dynamic> j) {
+    return TrainerApplicationModel(
+      id: j['id'],
+      userId: j['userId'],
+      userFullName: j['userFullName'],
+      userEmail: j['userEmail'],
+      biography: j['biography'],
+      experience: j['experience'],
+      certifications: j['certifications']?.toString(),
+      availability: j['availability']?.toString(),
+      status: j['status'],
+      adminNote: j['adminNote']?.toString(),
+      submittedAt: j['submittedAt'],
+      reviewedAt: j['reviewedAt']?.toString(),
+    );
+  }
+
+  static const statusLabels = ['Na čekanju', 'Odobrena', 'Odbijena'];
+  String get statusLabel => statusLabels[status];
+}
+
 class CheckInModel {
   final int id;
   final String gymName;

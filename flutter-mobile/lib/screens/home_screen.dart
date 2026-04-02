@@ -7,6 +7,7 @@ import '../services/api_services.dart';
 import 'checkin_history_screen.dart';
 import 'checkin_screen.dart';
 import 'my_memberships_screen.dart';
+import 'trainer_application_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -254,6 +255,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
+            if (user?.userRole == UserRole.member)
+              _QuickTile(
+                icon: Icons.fitness_center,
+                title: 'Trenerska prijava',
+                subtitle: 'Pošalji zahtjev da postaneš trener',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (ctx) => const TrainerApplicationScreen(),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
