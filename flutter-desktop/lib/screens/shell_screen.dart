@@ -30,8 +30,8 @@ class _ShellScreenState extends State<ShellScreen> {
     _NavItem(Icons.bar_chart_outlined, Icons.bar_chart, 'Izvještaji'),
   ];
 
-  final _screens = const [
-    DashboardScreen(),
+  List<Widget> get _screens => [
+    DashboardScreen(onOpenTrainerApps: () => setState(() => _selected = 5)),
     GymsScreen(),
     MembersScreen(),
     MembershipsScreen(),

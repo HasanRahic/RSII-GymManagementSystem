@@ -5,7 +5,9 @@ import '../models/models.dart';
 import '../services/api_services.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  final VoidCallback? onOpenTrainerApps;
+
+  const DashboardScreen({super.key, this.onOpenTrainerApps});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -114,6 +116,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         s.pendingTrainerApplications.toString(),
         Icons.assignment_outlined,
         kRed,
+        onTap: widget.onOpenTrainerApps,
       ),
     ];
 
@@ -217,7 +220,9 @@ class _StatData {
   final String value;
   final IconData icon;
   final Color color;
-  const _StatData(this.label, this.value, this.icon, this.color);
+  final VoidCallback? onTap;
+
+  const _StatData(this.label, this.value, this.icon, this.color, {this.onTap});
 }
 
 class _StatCard extends StatelessWidget {
@@ -228,42 +233,46 @@ class _StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       elevation: 0,
+      clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: const BorderSide(color: Color(0xFFE2E8F0)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: data.color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: data.onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: data.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(data.icon, color: data.color, size: 24),
               ),
-              child: Icon(data.icon, color: data.color, size: 24),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(data.label,
-                      style: const TextStyle(
-                          color: Color(0xFF64748B), fontSize: 12)),
-                  const SizedBox(height: 4),
-                  Text(data.value,
-                      style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E293B))),
-                ],
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(data.label,
+                        style: const TextStyle(
+                            color: Color(0xFF64748B), fontSize: 12)),
+                    const SizedBox(height: 4),
+                    Text(data.value,
+                        style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A))),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
