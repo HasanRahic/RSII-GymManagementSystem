@@ -99,13 +99,6 @@ class CheckInService {
     final data = await ApiClient.get('/checkins/gym/$gymId$q') as List;
     return data.map((e) => CheckInModel.fromJson(e)).toList();
   }
-
-  static Future<List<CheckInModel>> getAllCheckIns({String? date}) async {
-    // Get check-ins from all gyms by fetching with a broad date range via reports
-    // We fallback to gym 1 if no specific gym; screens should load per gym
-    final data = await ApiClient.get('/checkins/gym/1${date != null ? '?date=$date' : ''}') as List;
-    return data.map((e) => CheckInModel.fromJson(e)).toList();
-  }
 }
 
 // ─── Trainer Application Service ──────────────────────────────────────────────
