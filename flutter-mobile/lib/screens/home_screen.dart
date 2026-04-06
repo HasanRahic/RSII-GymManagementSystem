@@ -884,11 +884,41 @@ class _HomeScreenState extends State<HomeScreen> {
     final search = _gymSearchCtrl.text.trim().toLowerCase();
     final selectedCity = _selectedCity;
     final selectedType = _selectedTrainingType?.trim().toLowerCase();
+    final gymById = {for (final gym in _gyms) gym.id: gym};
 
     final sessionsByGym = <int, List<TrainingSessionModel>>{};
     for (final session in _sessions.where((session) => session.isGroup && session.isActive)) {
       sessionsByGym.putIfAbsent(session.gymId, () => []).add(session);
     }
+
+    final trainerMap = <String, Set<String>>{};
+    final trainerGymIds = <String, Set<int>>{};
+    for (final session in _sessions.where((session) => session.isActive)) {
+      final name = session.trainerFullName.trim().isEmpty ? 'Trener #${session.trainerId}' : session.trainerFullName;
+      trainerMap.putIfAbsent(name, () => <String>{}).add(session.trainingTypeName);
+      trainerGymIds.putIfAbsent(name, () => <int>{}).add(session.gymId);
+    }
+
+    bool trainerMatches(String name, Set<String> types, Set<int> gymIds) {
+      final cityMatches = selectedCity == 'Svi gradovi' ||
+          gymIds.any((id) => (gymById[id]?.cityName.toLowerCase().contains(selectedCity.toLowerCase()) ?? false));
+      final typeMatches = selectedType == null || types.any((type) => type.toLowerCase() == selectedType);
+      final searchMatches = search.isEmpty ||
+          name.toLowerCase().contains(search) ||
+          types.any((type) => type.toLowerCase().contains(search));
+      return cityMatches && typeMatches && searchMatches;
+    }
+
+    final trainerCards = trainerMap.entries
+        .where((entry) => trainerMatches(entry.key, entry.value, trainerGymIds[entry.key] ?? <int>{}))
+        .map(
+          (entry) => _TrainerPreviewData(
+            name: entry.key,
+            role: '${entry.value.take(2).join(' & ')} instruktor',
+          ),
+        )
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
 
     List<String> tagsForGym(GymModel gym) {
       final tags = <String>{
@@ -1119,25 +1149,23 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 18),
         if (_showTrainers) ...[
-          const Text(
-            '8 trenera',
-            style: TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w700),
+          Text(
+            '${trainerCards.length} trenera',
+            style: const TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
-          const _TrainerPreviewCard(
-            name: 'Amir Hodžić',
-            role: 'Yoga & Pilates instruktor',
-          ),
-          const SizedBox(height: 10),
-          const _TrainerPreviewCard(
-            name: 'Lejla Karić',
-            role: 'HIIT i Kardio trener',
-          ),
-          const SizedBox(height: 10),
-          const _TrainerPreviewCard(
-            name: 'Haris Mujić',
-            role: 'CrossFit trener',
-          ),
+          if (trainerCards.isEmpty)
+            const Text('Nema trenera za odabrane filtere.', style: TextStyle(color: Color(0xFF8A94A8)))
+          else
+            ...trainerCards.map(
+              (trainer) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _TrainerPreviewCard(
+                  name: trainer.name,
+                  role: trainer.role,
+                ),
+              ),
+            ),
         ] else ...[
           const _SectionTitle(icon: '⭐', title: 'Highly Recommended'),
           const SizedBox(height: 6),
@@ -1598,6 +1626,16 @@ class _SectionTitle extends StatelessWidget {
       ],
     );
   }
+}
+
+class _TrainerPreviewData {
+  final String name;
+  final String role;
+
+  const _TrainerPreviewData({
+    required this.name,
+    required this.role,
+  });
 }
 
 class _TrainerPreviewCard extends StatelessWidget {
