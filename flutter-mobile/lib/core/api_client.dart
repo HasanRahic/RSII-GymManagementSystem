@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'constants.dart';
 
 class ApiClient {
   static String? _token;
+  static const Duration _requestTimeout = Duration(seconds: 12);
 
   static String? get currentToken => _token;
 
@@ -30,20 +33,36 @@ class ApiClient {
       };
 
   static Future<dynamic> get(String path) async {
-    final resp = await http.get(
-      Uri.parse('$kApiBase$path'),
-      headers: _headers,
-    );
-    return _handle(resp);
+    try {
+      final resp = await http
+          .get(
+            Uri.parse('$kApiBase$path'),
+            headers: _headers,
+          )
+          .timeout(_requestTimeout);
+      return _handle(resp);
+    } on TimeoutException {
+      throw ApiException(408, 'Server ne odgovara. Provjerite da li je backend pokrenut.');
+    } on SocketException {
+      throw ApiException(0, 'Nema konekcije sa backendom.');
+    }
   }
 
   static Future<dynamic> post(String path, Map<String, dynamic> body) async {
-    final resp = await http.post(
-      Uri.parse('$kApiBase$path'),
-      headers: _headers,
-      body: jsonEncode(body),
-    );
-    return _handle(resp);
+    try {
+      final resp = await http
+          .post(
+            Uri.parse('$kApiBase$path'),
+            headers: _headers,
+            body: jsonEncode(body),
+          )
+          .timeout(_requestTimeout);
+      return _handle(resp);
+    } on TimeoutException {
+      throw ApiException(408, 'Server ne odgovara. Provjerite da li je backend pokrenut.');
+    } on SocketException {
+      throw ApiException(0, 'Nema konekcije sa backendom.');
+    }
   }
 
   static dynamic _handle(http.Response resp) {
