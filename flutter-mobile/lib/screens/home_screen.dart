@@ -19,6 +19,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   UserMembership? _activeMembership;
   bool _loadingMembership = true;
+  bool _loadingCatalog = true;
   int _selectedIndex = 0;
   String _profileSection = 'Historija';
   int _membersInGym = 12;
@@ -29,11 +30,17 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _showTrainers = false;
   String _selectedCity = 'Svi gradovi';
   String? _selectedTrainingType;
+  List<GymModel> _gyms = [];
+  List<MembershipPlanModel> _plans = [];
+  List<TrainingSessionModel> _sessions = [];
+  List<String> _cities = ['Svi gradovi'];
+  List<String> _trainingTypes = [];
 
   @override
   void initState() {
     super.initState();
     _loadMembership();
+    _loadCatalog();
     _syncCheckInState();
   }
 
@@ -61,6 +68,56 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       if (mounted) setState(() => _loadingMembership = false);
     }
+  }
+
+  Future<void> _loadCatalog() async {
+    setState(() => _loadingCatalog = true);
+    try {
+      final results = await Future.wait([
+        GymService.getAll(),
+        MembershipService.getPlans(),
+        TrainingSessionService.getAll(),
+        ReferenceService.getCities(),
+        ReferenceService.getTrainingTypes(),
+      ]);
+
+      final gyms = results[0] as List<GymModel>;
+      final plans = results[1] as List<MembershipPlanModel>;
+      final sessions = results[2] as List<TrainingSessionModel>;
+      final cities = results[3] as List<CityModel>;
+      final trainingTypes = results[4] as List<TrainingTypeModel>;
+
+      if (!mounted) return;
+      setState(() {
+        _gyms = gyms;
+        _plans = plans;
+        _sessions = sessions;
+        _cities = ['Svi gradovi', ...cities.map((c) => c.name).toSet()];
+        _trainingTypes = trainingTypes.map((t) => t.name).toList();
+        if (!_cities.contains(_selectedCity)) {
+          _selectedCity = 'Svi gradovi';
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _gyms = [];
+        _plans = [];
+        _sessions = [];
+        _cities = ['Svi gradovi'];
+        _trainingTypes = [];
+      });
+    } finally {
+      if (mounted) setState(() => _loadingCatalog = false);
+    }
+  }
+
+  Future<void> _refreshAll() async {
+    await Future.wait([
+      _loadMembership(),
+      _loadCatalog(),
+      _syncCheckInState(),
+    ]);
   }
 
   Future<void> _syncCheckInState() async {
@@ -199,7 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             Expanded(
               child: RefreshIndicator(
-                onRefresh: _loadMembership,
+                onRefresh: _refreshAll,
                 child: _buildTabContent(context, user),
               ),
             ),
@@ -221,7 +278,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTabContent(BuildContext context, AuthResponse? user) {
-    if (_loadingMembership && _selectedIndex != 3) {
+    if ((_loadingMembership || _loadingCatalog) && _selectedIndex != 3) {
       return ListView(
         physics: AlwaysScrollableScrollPhysics(),
         children: const [
@@ -247,6 +304,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final gymName = _activeMembership?.gymName ?? 'Iron Gym Sarajevo';
     final planName = _activeMembership?.planName ?? 'Bez aktivne članarine';
     final daysLeft = _activeMembership?.daysRemaining ?? 0;
+    final activePlans = _plans.where((plan) => plan.isActive).take(4).toList();
+    final groupSessions = _sessions.where((session) => session.isGroup && session.isActive).take(3).toList();
+
+    String prettyTime(String value) => value.length >= 5 ? value.substring(0, 5) : value;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -670,38 +731,46 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 18),
         const _SectionTitle(icon: '💳', title: 'Članarine'),
         const SizedBox(height: 10),
-        GridView.count(
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 1.05,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          children: const [
-            _MembershipOfferCard(emoji: '🗓️', title: 'Mjesečna', price: '50 KM'),
-            _MembershipOfferCard(emoji: '🗓️', title: 'Tromjesečna', price: '135 KM'),
-            _MembershipOfferCard(emoji: '📋', title: 'Polugodišnja', price: '250 KM'),
-            _MembershipOfferCard(emoji: '🎯', title: 'Godišnja', price: '450 KM'),
-          ],
-        ),
+        if (activePlans.isEmpty)
+          const Text('Nema dostupnih članarina.', style: TextStyle(color: Color(0xFF8A94A8)))
+        else
+          GridView.count(
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 1.05,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            children: activePlans
+                .map(
+                  (plan) => _MembershipOfferCard(
+                    emoji: plan.durationDays >= 300
+                        ? '🎯'
+                        : plan.durationDays >= 180
+                            ? '📋'
+                            : '🗓️',
+                    title: plan.name,
+                    price: '${plan.price.toStringAsFixed(0)} KM',
+                  ),
+                )
+                .toList(),
+          ),
 
         const SizedBox(height: 18),
         const _SectionTitle(icon: '🏋️', title: 'Grupni treninzi'),
         const SizedBox(height: 10),
-        const _GroupTrainingTile(
-          title: 'Pilates',
-          schedule: 'Pon, Sri, Pet · 17:00',
-        ),
-        const SizedBox(height: 10),
-        const _GroupTrainingTile(
-          title: 'Yoga',
-          schedule: 'Uto, Čet · 18:30',
-        ),
-        const SizedBox(height: 10),
-        const _GroupTrainingTile(
-          title: 'Mix Workout',
-          schedule: 'Sva, Sub · 10:00',
-        ),
+        if (groupSessions.isEmpty)
+          const Text('Trenutno nema grupnih treninga.', style: TextStyle(color: Color(0xFF8A94A8)))
+        else
+          ...groupSessions.map(
+            (session) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _GroupTrainingTile(
+                title: session.title,
+                schedule: '${session.date.substring(0, 10)} · ${prettyTime(session.startTime)} - ${prettyTime(session.endTime)}',
+              ),
+            ),
+          ),
 
         // === NEWS SECTION ===
         const Text(
@@ -813,74 +882,81 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildGymsTab() {
     final search = _gymSearchCtrl.text.trim().toLowerCase();
+    final selectedCity = _selectedCity;
+    final selectedType = _selectedTrainingType?.trim().toLowerCase();
 
-    final List<_GymCardData> highly = [
-      _GymCardData(
-        name: 'FitZone Centar',
-        city: 'Sarajevo, Centar',
-        rating: '4.9',
-        reviews: '342 recenzije',
-        status: 'ONLINE',
-        tags: const ['CrossFit', 'HIIT', 'Kardio', 'Bazen'],
-        accent: const Color(0xFFF6A600),
-      ),
-      _GymCardData(
-        name: 'Iron Gym Sarajevo',
-        city: 'Sarajevo, Marijin Dvor',
-        rating: '4.8',
-        reviews: '289 recenzije',
-        status: 'ONLINE',
-        tags: const ['Yoga', 'Pilates', 'Utezi', 'Sauna'],
-        accent: const Color(0xFFF6A600),
-      ),
-    ];
+    final sessionsByGym = <int, List<TrainingSessionModel>>{};
+    for (final session in _sessions.where((session) => session.isGroup && session.isActive)) {
+      sessionsByGym.putIfAbsent(session.gymId, () => []).add(session);
+    }
 
-    final List<_GymCardData> recommended = [
-      _GymCardData(
-        name: 'Zen Fitness Studio',
-        city: 'Sarajevo, Ilidža',
-        rating: '4.6',
-        reviews: '156 recenzija',
-        status: 'OFFLINE',
-        tags: const ['Yoga', 'Pilates', 'Meditacija'],
-        accent: const Color(0xFF657BE6),
-      ),
-    ];
+    List<String> tagsForGym(GymModel gym) {
+      final tags = <String>{
+        ...?sessionsByGym[gym.id]?.map((session) => session.trainingTypeName).where((name) => name.isNotEmpty),
+      };
+      if (tags.isEmpty) {
+        tags.add(gym.isOpen ? 'Otvoreno' : 'Zatvoreno');
+      }
+      return tags.take(4).toList();
+    }
 
-    final List<_GymCardData> other = [
-      _GymCardData(
-        name: 'PowerHouse Gym',
-        city: 'Sarajevo, Novo Sarajevo',
-        rating: '4.5',
-        reviews: '134 recenzije',
-        status: 'ONLINE',
-        tags: const ['Utezi', 'Kardio', 'Funkcionalni'],
-        accent: const Color(0xFF3BB76A),
-      ),
-      _GymCardData(
-        name: 'Titan Fitness',
-        city: 'Mostar, Centar',
-        rating: '4.4',
-        reviews: '98 recenzija',
-        status: 'ONLINE',
-        tags: const ['Kardio', 'HIIT', 'Utezi'],
-        accent: const Color(0xFF3BB76A),
-      ),
-    ];
-
-    bool matches(_GymCardData gym) {
-      final cityMatches = _selectedCity == 'Svi gradovi' || gym.city.toLowerCase().contains(_selectedCity.toLowerCase());
-      final typeMatches = _selectedTrainingType == null || gym.tags.any((t) => t.toLowerCase() == _selectedTrainingType!.toLowerCase());
+    bool matchesGym(GymModel gym) {
+      final cityMatches = selectedCity == 'Svi gradovi' || gym.cityName.toLowerCase().contains(selectedCity.toLowerCase());
+      final typeMatches = selectedType == null ||
+          (sessionsByGym[gym.id]?.any((session) => session.trainingTypeName.toLowerCase() == selectedType) ?? false);
       final searchMatches = search.isEmpty ||
           gym.name.toLowerCase().contains(search) ||
-          gym.city.toLowerCase().contains(search) ||
-          gym.tags.any((t) => t.toLowerCase().contains(search));
+          gym.address.toLowerCase().contains(search) ||
+          gym.cityName.toLowerCase().contains(search) ||
+          (sessionsByGym[gym.id]?.any((session) =>
+                  session.title.toLowerCase().contains(search) ||
+                  session.trainingTypeName.toLowerCase().contains(search)) ??
+              false);
       return cityMatches && typeMatches && searchMatches;
     }
 
-    final filteredHighly = highly.where(matches).toList();
-    final filteredRecommended = recommended.where(matches).toList();
-    final filteredOther = other.where(matches).toList();
+    final visibleGyms = _gyms.where(matchesGym).toList();
+    final openGyms = visibleGyms.where((gym) => gym.isOpen).toList()
+      ..sort((a, b) => b.currentOccupancy.compareTo(a.currentOccupancy));
+
+    final highlyRecommended = openGyms.take(2).toList();
+
+    final recommendedSource = visibleGyms.where((gym) =>
+        !highlyRecommended.any((featured) => featured.id == gym.id) &&
+        (selectedType == null
+            ? (sessionsByGym[gym.id]?.any((session) => ['yoga', 'pilates'].contains(session.trainingTypeName.toLowerCase())) ?? false)
+            : (sessionsByGym[gym.id]?.any((session) => session.trainingTypeName.toLowerCase() == selectedType) ?? false)));
+    final recommendedForYou = recommendedSource.isNotEmpty
+        ? recommendedSource.take(2).toList()
+        : visibleGyms.where((gym) => !highlyRecommended.any((featured) => featured.id == gym.id)).take(2).toList();
+
+    final otherGyms = visibleGyms
+        .where((gym) =>
+            !highlyRecommended.any((featured) => featured.id == gym.id) &&
+            !recommendedForYou.any((recommended) => recommended.id == gym.id))
+        .toList();
+
+    String ratingFromGym(GymModel gym) {
+      final ratio = gym.capacity == 0 ? 0.0 : (gym.currentOccupancy / gym.capacity);
+      final rating = 3.5 + (ratio * 1.5);
+      return rating.clamp(3.5, 5.0).toStringAsFixed(1);
+    }
+
+    String reviewsFromGym(GymModel gym) {
+      return '${gym.currentOccupancy} trenutno u teretani';
+    }
+
+    Widget buildGymCard(GymModel gym) {
+      return _GymCard(
+        name: gym.name,
+        city: '${gym.cityName}, ${gym.countryName}',
+        rating: ratingFromGym(gym),
+        reviews: reviewsFromGym(gym),
+        status: gym.statusLabel,
+        tags: tagsForGym(gym),
+        accent: gym.isOpen ? const Color(0xFF3BB76A) : const Color(0xFFE76F6F),
+      );
+    }
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -960,12 +1036,12 @@ class _HomeScreenState extends State<HomeScreen> {
             child: DropdownButton<String>(
               value: _selectedCity,
               isExpanded: true,
-              items: const [
-                DropdownMenuItem(value: 'Svi gradovi', child: Text('Svi gradovi')),
-                DropdownMenuItem(value: 'Sarajevo', child: Text('Sarajevo')),
-                DropdownMenuItem(value: 'Mostar', child: Text('Mostar')),
-                DropdownMenuItem(value: 'Banja Luka', child: Text('Banja Luka')),
-              ],
+              items: _cities
+                  .map((city) => DropdownMenuItem(
+                        value: city,
+                        child: Text(city),
+                      ))
+                  .toList(),
               onChanged: (value) {
                 if (value == null) return;
                 setState(() => _selectedCity = value);
@@ -982,7 +1058,9 @@ class _HomeScreenState extends State<HomeScreen> {
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: ['Yoga', 'Pilates', 'Utezi', 'Kardio', 'CrossFit', 'HIIT']
+          children: (_trainingTypes.isNotEmpty
+                  ? _trainingTypes
+                  : const ['Yoga', 'Pilates', 'Utezi', 'Kardio', 'CrossFit', 'HIIT'])
               .map(
                 (type) => ChoiceChip(
                   label: Text(type),
@@ -1061,77 +1139,47 @@ class _HomeScreenState extends State<HomeScreen> {
             role: 'CrossFit trener',
           ),
         ] else ...[
-        const _SectionTitle(icon: '⭐', title: 'Highly Recommended'),
-        const SizedBox(height: 6),
-        const Text('Najbolje ocijenjene teretane sa 4.5+ zvjezdica', style: TextStyle(color: Color(0xFF8A94A8))),
-        const SizedBox(height: 12),
-        if (filteredHighly.isEmpty)
-          const Text('Nema rezultata za odabrane filtere.', style: TextStyle(color: Color(0xFF8A94A8)))
-        else
-          ...filteredHighly
-              .map(
-                (g) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _GymCard(
-                    name: g.name,
-                    city: g.city,
-                    rating: g.rating,
-                    reviews: g.reviews,
-                    status: g.status,
-                    tags: g.tags,
-                    accent: g.accent,
-                  ),
-                ),
-              )
-              ,
-        const SizedBox(height: 18),
-        const _SectionTitle(icon: '✨', title: 'Recommended For You'),
-        const SizedBox(height: 6),
-        const Text('Na osnovu vaših preferencija: Yoga, Pilates', style: TextStyle(color: Color(0xFF8A94A8))),
-        const SizedBox(height: 12),
-        if (filteredRecommended.isEmpty)
-          const Text('Nema preporuka za trenutni filter.', style: TextStyle(color: Color(0xFF8A94A8)))
-        else
-          ...filteredRecommended
-              .map(
-                (g) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _GymCard(
-                    name: g.name,
-                    city: g.city,
-                    rating: g.rating,
-                    reviews: g.reviews,
-                    status: g.status,
-                    tags: g.tags,
-                    accent: g.accent,
-                  ),
-                ),
-              )
-              ,
-        const SizedBox(height: 18),
-        const _SectionTitle(icon: '🏙️', title: 'Ostale teretane'),
-        const SizedBox(height: 6),
-        const Text('Sve dostupne teretane u vašem gradu', style: TextStyle(color: Color(0xFF8A94A8))),
-        const SizedBox(height: 12),
-        if (filteredOther.isEmpty)
-          const Text('Nema dodatnih teretana za ovaj izbor.', style: TextStyle(color: Color(0xFF8A94A8)))
-        else
-          ...filteredOther
-              .map(
-                (g) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _GymCard(
-                    name: g.name,
-                    city: g.city,
-                    rating: g.rating,
-                    reviews: g.reviews,
-                    status: g.status,
-                    tags: g.tags,
-                    accent: g.accent,
-                  ),
-                ),
-              )
-              ,
+          const _SectionTitle(icon: '⭐', title: 'Highly Recommended'),
+          const SizedBox(height: 6),
+          const Text('Najbolje ocijenjene teretane sa 4.5+ zvjezdica', style: TextStyle(color: Color(0xFF8A94A8))),
+          const SizedBox(height: 12),
+          if (highlyRecommended.isEmpty)
+            const Text('Nema rezultata za odabrane filtere.', style: TextStyle(color: Color(0xFF8A94A8)))
+          else
+            ...highlyRecommended.map(
+              (gym) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: buildGymCard(gym),
+              ),
+            ),
+          const SizedBox(height: 18),
+          const _SectionTitle(icon: '✨', title: 'Recommended For You'),
+          const SizedBox(height: 6),
+          const Text('Na osnovu vaših preferencija: Yoga, Pilates', style: TextStyle(color: Color(0xFF8A94A8))),
+          const SizedBox(height: 12),
+          if (recommendedForYou.isEmpty)
+            const Text('Nema preporuka za trenutni filter.', style: TextStyle(color: Color(0xFF8A94A8)))
+          else
+            ...recommendedForYou.map(
+              (gym) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: buildGymCard(gym),
+              ),
+            ),
+          const SizedBox(height: 18),
+          const _SectionTitle(icon: '🏙️', title: 'Ostale teretane'),
+          const SizedBox(height: 6),
+          const Text('Sve dostupne teretane u vašem gradu', style: TextStyle(color: Color(0xFF8A94A8))),
+          const SizedBox(height: 12),
+          if (otherGyms.isEmpty)
+            const Text('Nema dodatnih teretana za ovaj izbor.', style: TextStyle(color: Color(0xFF8A94A8)))
+          else
+            ...otherGyms.map(
+              (gym) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: buildGymCard(gym),
+              ),
+            ),
         ],
       ],
     );
@@ -1550,26 +1598,6 @@ class _SectionTitle extends StatelessWidget {
       ],
     );
   }
-}
-
-class _GymCardData {
-  final String name;
-  final String city;
-  final String rating;
-  final String reviews;
-  final String status;
-  final List<String> tags;
-  final Color accent;
-
-  const _GymCardData({
-    required this.name,
-    required this.city,
-    required this.rating,
-    required this.reviews,
-    required this.status,
-    required this.tags,
-    required this.accent,
-  });
 }
 
 class _TrainerPreviewCard extends StatelessWidget {

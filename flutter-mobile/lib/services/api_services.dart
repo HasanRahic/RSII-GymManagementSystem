@@ -2,13 +2,31 @@ import '../core/api_client.dart';
 import '../models/models.dart';
 
 class GymService {
-  static Future<List<GymModel>> getAll() async {
-    final data = await ApiClient.get('/gyms') as List;
+  static Future<List<GymModel>> getAll({String? search, String? city, String? status}) async {
+    final query = <String>[];
+    if (search != null && search.trim().isNotEmpty) {
+      query.add('search=${Uri.encodeComponent(search.trim())}');
+    }
+    if (city != null && city.trim().isNotEmpty && city != 'Svi gradovi') {
+      query.add('city=${Uri.encodeComponent(city.trim())}');
+    }
+    if (status != null && status.trim().isNotEmpty) {
+      query.add('status=${Uri.encodeComponent(status.trim())}');
+    }
+    final suffix = query.isEmpty ? '' : '?${query.join('&')}';
+
+    final data = await ApiClient.get('/gyms$suffix') as List;
     return data.map((e) => GymModel.fromJson(e)).toList();
   }
 }
 
 class MembershipService {
+  static Future<List<MembershipPlanModel>> getPlans({int? gymId}) async {
+    final suffix = gymId == null ? '' : '?gymId=$gymId';
+    final data = await ApiClient.get('/memberships/plans$suffix') as List;
+    return data.map((e) => MembershipPlanModel.fromJson(e)).toList();
+  }
+
   static Future<List<UserMembership>> getMyMemberships() async {
     final data = await ApiClient.get('/memberships/my') as List;
     return data.map((e) => UserMembership.fromJson(e)).toList();
@@ -34,6 +52,31 @@ class MembershipService {
       'discountPercent': discountPercent,
     });
     return UserMembership.fromJson(data);
+  }
+}
+
+class TrainingSessionService {
+  static Future<List<TrainingSessionModel>> getAll({int? gymId, int? trainerId, int? trainingTypeId}) async {
+    final query = <String>[];
+    if (gymId != null) query.add('gymId=$gymId');
+    if (trainerId != null) query.add('trainerId=$trainerId');
+    if (trainingTypeId != null) query.add('trainingTypeId=$trainingTypeId');
+    final suffix = query.isEmpty ? '' : '?${query.join('&')}';
+
+    final data = await ApiClient.get('/training-sessions$suffix') as List;
+    return data.map((e) => TrainingSessionModel.fromJson(e)).toList();
+  }
+}
+
+class ReferenceService {
+  static Future<List<CityModel>> getCities() async {
+    final data = await ApiClient.get('/reference/cities') as List;
+    return data.map((e) => CityModel.fromJson(e)).toList();
+  }
+
+  static Future<List<TrainingTypeModel>> getTrainingTypes() async {
+    final data = await ApiClient.get('/reference/training-types') as List;
+    return data.map((e) => TrainingTypeModel.fromJson(e)).toList();
   }
 }
 

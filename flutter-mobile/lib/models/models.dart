@@ -41,19 +41,209 @@ class AuthResponse {
 class GymModel {
   final int id;
   final String name;
+  final String address;
+  final String? description;
+  final String? phoneNumber;
+  final String? email;
+  final String? imageUrl;
+  final String openTime;
+  final String closeTime;
+  final int capacity;
+  final int currentOccupancy;
+  final int status;
+  final double? latitude;
+  final double? longitude;
+  final int cityId;
   final String cityName;
+  final String countryName;
 
   GymModel({
     required this.id,
     required this.name,
+    required this.address,
+    required this.description,
+    required this.phoneNumber,
+    required this.email,
+    required this.imageUrl,
+    required this.openTime,
+    required this.closeTime,
+    required this.capacity,
+    required this.currentOccupancy,
+    required this.status,
+    required this.latitude,
+    required this.longitude,
+    required this.cityId,
     required this.cityName,
+    required this.countryName,
   });
 
   factory GymModel.fromJson(Map<String, dynamic> j) {
     return GymModel(
       id: j['id'],
       name: j['name'],
+      address: (j['address'] ?? '').toString(),
+      description: j['description']?.toString(),
+      phoneNumber: j['phoneNumber']?.toString(),
+      email: j['email']?.toString(),
+      imageUrl: j['imageUrl']?.toString(),
+      openTime: (j['openTime'] ?? '').toString(),
+      closeTime: (j['closeTime'] ?? '').toString(),
+      capacity: j['capacity'] ?? 0,
+      currentOccupancy: j['currentOccupancy'] ?? 0,
+      status: j['status'] is num ? (j['status'] as num).toInt() : 0,
+      latitude: (j['latitude'] as num?)?.toDouble(),
+      longitude: (j['longitude'] as num?)?.toDouble(),
+      cityId: j['cityId'] ?? 0,
       cityName: (j['cityName'] ?? '').toString(),
+      countryName: (j['countryName'] ?? '').toString(),
+    );
+  }
+
+  bool get isOpen => status == 0;
+  String get statusLabel => isOpen ? 'ONLINE' : 'OFFLINE';
+}
+
+class MembershipPlanModel {
+  final int id;
+  final String name;
+  final String? description;
+  final int durationDays;
+  final double price;
+  final bool isActive;
+  final int gymId;
+  final String gymName;
+
+  MembershipPlanModel({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.durationDays,
+    required this.price,
+    required this.isActive,
+    required this.gymId,
+    required this.gymName,
+  });
+
+  factory MembershipPlanModel.fromJson(Map<String, dynamic> j) {
+    return MembershipPlanModel(
+      id: j['id'],
+      name: j['name'],
+      description: j['description']?.toString(),
+      durationDays: j['durationDays'] ?? 0,
+      price: (j['price'] as num).toDouble(),
+      isActive: j['isActive'] ?? true,
+      gymId: j['gymId'] ?? 0,
+      gymName: (j['gymName'] ?? '').toString(),
+    );
+  }
+}
+
+class TrainingSessionModel {
+  final int id;
+  final String title;
+  final String? description;
+  final int type;
+  final String date;
+  final String startTime;
+  final String endTime;
+  final int maxParticipants;
+  final int currentParticipants;
+  final double price;
+  final bool isActive;
+  final int trainerId;
+  final String trainerFullName;
+  final int gymId;
+  final String gymName;
+  final int trainingTypeId;
+  final String trainingTypeName;
+
+  TrainingSessionModel({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.type,
+    required this.date,
+    required this.startTime,
+    required this.endTime,
+    required this.maxParticipants,
+    required this.currentParticipants,
+    required this.price,
+    required this.isActive,
+    required this.trainerId,
+    required this.trainerFullName,
+    required this.gymId,
+    required this.gymName,
+    required this.trainingTypeId,
+    required this.trainingTypeName,
+  });
+
+  factory TrainingSessionModel.fromJson(Map<String, dynamic> j) {
+    return TrainingSessionModel(
+      id: j['id'],
+      title: j['title'],
+      description: j['description']?.toString(),
+      type: j['type'] is num ? (j['type'] as num).toInt() : 0,
+      date: (j['date'] ?? '').toString(),
+      startTime: (j['startTime'] ?? '').toString(),
+      endTime: (j['endTime'] ?? '').toString(),
+      maxParticipants: j['maxParticipants'] ?? 0,
+      currentParticipants: j['currentParticipants'] ?? 0,
+      price: (j['price'] as num).toDouble(),
+      isActive: j['isActive'] ?? true,
+      trainerId: j['trainerId'] ?? 0,
+      trainerFullName: (j['trainerFullName'] ?? '').toString(),
+      gymId: j['gymId'] ?? 0,
+      gymName: (j['gymName'] ?? '').toString(),
+      trainingTypeId: j['trainingTypeId'] ?? 0,
+      trainingTypeName: (j['trainingTypeName'] ?? '').toString(),
+    );
+  }
+
+  bool get isGroup => type == 1;
+}
+
+class CityModel {
+  final int id;
+  final String name;
+  final String? postalCode;
+  final int countryId;
+  final String countryName;
+
+  CityModel({
+    required this.id,
+    required this.name,
+    required this.postalCode,
+    required this.countryId,
+    required this.countryName,
+  });
+
+  factory CityModel.fromJson(Map<String, dynamic> j) {
+    return CityModel(
+      id: j['id'],
+      name: j['name'],
+      postalCode: j['postalCode']?.toString(),
+      countryId: j['countryId'] ?? 0,
+      countryName: (j['countryName'] ?? '').toString(),
+    );
+  }
+}
+
+class TrainingTypeModel {
+  final int id;
+  final String name;
+  final String? description;
+
+  TrainingTypeModel({
+    required this.id,
+    required this.name,
+    required this.description,
+  });
+
+  factory TrainingTypeModel.fromJson(Map<String, dynamic> j) {
+    return TrainingTypeModel(
+      id: j['id'],
+      name: j['name'],
+      description: j['description']?.toString(),
     );
   }
 }
