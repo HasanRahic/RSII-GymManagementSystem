@@ -49,4 +49,7 @@
 # Logs
 *.log
 
+# Accidental root-level build artifacts (e.g., CMake tooling output)
+/build/
+
 # EF migrations snapshot shouldn't be ignored, so leave Migrations/ tracked

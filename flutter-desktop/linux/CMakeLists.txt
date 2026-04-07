@@ -1,5 +1,13 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.13)
+
+# This file is only for Linux desktop builds. If it gets opened/configured on
+# Windows by editor tooling, skip early to avoid false MSBuild/toolset errors.
+if(WIN32)
+  message(STATUS "Skipping Linux desktop CMake project on Windows host.")
+  return()
+endif()
+
 project(runner LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change

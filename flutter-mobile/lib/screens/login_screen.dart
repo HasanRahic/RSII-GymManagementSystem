@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../core/api_client.dart';
 import '../core/constants.dart';
 import '../providers/auth_provider.dart';
 
@@ -34,14 +35,31 @@ class _LoginScreenState extends State<LoginScreen> {
             _passCtrl.text,
           );
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            backgroundColor: kRed,
+            action: SnackBarAction(
+              label: 'Pokusaj ponovo',
+              textColor: Colors.white,
+              onPressed: _loading ? () {} : _login,
+            ),
+          ),
+        );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString()),
-          backgroundColor: kRed,
-        ),
-      );
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Greska pri prijavi. Pokusajte ponovo.'),
+            backgroundColor: kRed,
+          ),
+        );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
