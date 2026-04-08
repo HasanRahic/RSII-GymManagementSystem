@@ -17,6 +17,15 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passCtrl = TextEditingController();
   bool _obscure = true;
   bool _loading = false;
+  bool? _backendOnline;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showBackendStatus();
+    });
+  }
 
   @override
   void dispose() {
@@ -63,6 +72,57 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<bool> _checkBackendHealth() async {
+    try {
+      await ApiClient.getRaw('$kServerBase/health');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _showBackendStatus() async {
+    final isOnline = await _checkBackendHealth();
+    if (!mounted) return;
+
+    setState(() {
+      _backendOnline = isOnline ? null : false;
+    });
+
+    if (isOnline) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Backend online'),
+            backgroundColor: kGreen,
+            duration: Duration(milliseconds: 350),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      Future.delayed(const Duration(milliseconds: 400), () {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      });
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: const Text('Backend offline. Pokreni backend i pokusaj ponovo.'),
+          backgroundColor: kRed,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'Pokusaj opet',
+            textColor: Colors.white,
+            onPressed: _showBackendStatus,
+          ),
+        ),
+      );
   }
 
   @override
@@ -118,6 +178,41 @@ class _LoginScreenState extends State<LoginScreen> {
                         const Text(
                           'Prijava na sistem',
                           style: TextStyle(color: Color(0xFF64748B)),
+                        ),
+                        const SizedBox(height: 16),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 250),
+                          child: _backendOnline == false
+                              ? Container(
+                                  key: const ValueKey('backend-offline'),
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: kRed.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: kRed.withValues(alpha: 0.25)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.cloud_off_outlined, color: kRed),
+                                      const SizedBox(width: 10),
+                                      const Expanded(
+                                        child: Text(
+                                          'Backend offline',
+                                          style: TextStyle(
+                                            color: kRed,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      TextButton(
+                                        onPressed: _loading ? null : _showBackendStatus,
+                                        child: const Text('Pokusaj opet'),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : const SizedBox(key: ValueKey('backend-online'), height: 0),
                         ),
                         const SizedBox(height: 24),
                         TextFormField(

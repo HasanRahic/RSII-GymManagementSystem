@@ -48,6 +48,22 @@ class ApiClient {
     }
   }
 
+  static Future<dynamic> getRaw(String url) async {
+    try {
+      final resp = await http
+          .get(
+            Uri.parse(url),
+            headers: _headers,
+          )
+          .timeout(_requestTimeout);
+      return _handle(resp);
+    } on TimeoutException {
+      throw ApiException(408, 'Server ne odgovara. Provjerite da li je backend pokrenut.');
+    } on SocketException {
+      throw ApiException(0, 'Nema konekcije sa backendom.');
+    }
+  }
+
   static Future<dynamic> post(String path, Map<String, dynamic> body) async {
     try {
       final resp = await http

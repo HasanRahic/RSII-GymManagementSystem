@@ -108,6 +108,17 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.MapGet("/health", async (GymDbContext db) =>
+{
+    var databaseAvailable = await db.Database.CanConnectAsync();
+    return Results.Ok(new
+    {
+        status = databaseAvailable ? "ok" : "degraded",
+        database = databaseAvailable,
+        timestampUtc = DateTime.UtcNow
+    });
+});
+
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
