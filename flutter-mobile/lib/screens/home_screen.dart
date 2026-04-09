@@ -35,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<TrainingSessionModel> _sessions = [];
   List<String> _cities = ['Svi gradovi'];
   List<String> _trainingTypes = [];
+  final List<_ShopCartItem> _shopCart = [];
 
   @override
   void initState() {
@@ -194,6 +195,200 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() => _checkInBusy = false);
       }
+    }
+  }
+
+  double get _shopTotal =>
+      _shopCart.fold(0, (sum, item) => sum + item.price);
+
+  Future<void> _addShopItemToCart(String title, double price) async {
+    setState(() {
+      _shopCart.add(_ShopCartItem(title: title, price: price));
+    });
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('$title je dodan u korpu.'),
+          duration: const Duration(milliseconds: 1200),
+          action: SnackBarAction(
+            label: 'Korpa',
+            onPressed: _openShopCheckout,
+          ),
+        ),
+      );
+  }
+
+  Future<void> _openShopCheckout() async {
+    if (_shopCart.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Korpa je prazna.')),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Shop korpa'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ..._shopCart.map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text('• ${item.title} - ${item.price.toStringAsFixed(0)} KM'),
+                ),
+              ),
+              const Divider(height: 18),
+              Text(
+                'Ukupno: ${_shopTotal.toStringAsFixed(0)} KM',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Napomena: trenutno je omogućen demo checkout tok bez plaćanja karticom.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Zatvori'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Potvrdi narudžbu'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final grouped = <String, _ShopCartItem>{};
+    for (final item in _shopCart) {
+      final key = '${item.title}|${item.price.toStringAsFixed(2)}';
+      final existing = grouped[key];
+      if (existing == null) {
+        grouped[key] = _ShopCartItem(title: item.title, price: item.price, quantity: 1);
+      } else {
+        grouped[key] = _ShopCartItem(
+          title: existing.title,
+          price: existing.price,
+          quantity: existing.quantity + 1,
+        );
+      }
+    }
+
+    final payload = grouped.values
+        .map(
+          (item) => {
+            'name': item.title,
+            'unitPrice': item.price,
+            'quantity': item.quantity,
+          },
+        )
+        .toList();
+
+    try {
+      final result = await PaymentService.createShopOrder(items: payload);
+      final paymentId = result['paymentId'];
+      final totalAmount = result['totalAmount'];
+
+      if (!mounted) return;
+      setState(() {
+        _shopCart.clear();
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Narudžba #$paymentId potvrđena (${(totalAmount as num).toStringAsFixed(0)} KM).',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Checkout nije uspio: $e')),
+      );
+    }
+  }
+
+  Future<void> _purchaseMembershipPlan(MembershipPlanModel plan) async {
+    final auth = context.read<AuthProvider>();
+    final user = auth.user;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Korisnik nije prijavljen.')),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Kupi članarinu: ${plan.name}'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Teretana: ${plan.gymName}'),
+              const SizedBox(height: 6),
+              Text('Trajanje: ${plan.durationDays} dana'),
+              const SizedBox(height: 6),
+              Text(
+                'Cijena: ${plan.price.toStringAsFixed(0)} KM',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              if ((plan.description ?? '').trim().isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(plan.description!),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Otkaži'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Kupi'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await MembershipService.renew(
+        userId: user.id,
+        membershipPlanId: plan.id,
+      );
+      if (!mounted) return;
+      await _loadMembership();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Članarina "${plan.name}" je aktivirana.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kupovina nije uspjela: $e')),
+      );
     }
   }
 
@@ -709,24 +904,37 @@ class _HomeScreenState extends State<HomeScreen> {
         const _SectionTitle(icon: '🛒', title: 'Shop'),
         const SizedBox(height: 10),
         Row(
-          children: const [
+          children: [
             Expanded(
               child: _OfferCard(
                 emoji: '🥤',
                 title: 'Whey Protein',
                 price: '89 KM',
+                onBuy: () => _addShopItemToCart('Whey Protein', 89),
               ),
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
               child: _OfferCard(
                 emoji: '👕',
                 title: 'FitTrack Majica',
                 price: '35 KM',
+                onBuy: () => _addShopItemToCart('FitTrack Majica', 35),
               ),
             ),
           ],
         ),
+        if (_shopCart.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _openShopCheckout,
+              icon: const Icon(Icons.shopping_cart_checkout),
+              label: Text('Korpa (${_shopCart.length}) · ${_shopTotal.toStringAsFixed(0)} KM'),
+            ),
+          ),
+        ],
 
         const SizedBox(height: 18),
         const _SectionTitle(icon: '💳', title: 'Članarine'),
@@ -738,7 +946,7 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisCount: 2,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
-            childAspectRatio: 1.05,
+            childAspectRatio: 0.82,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             children: activePlans
@@ -751,6 +959,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             : '🗓️',
                     title: plan.name,
                     price: '${plan.price.toStringAsFixed(0)} KM',
+                    onBuy: () => _purchaseMembershipPlan(plan),
                   ),
                 )
                 .toList(),
@@ -1402,6 +1611,45 @@ class _HomeScreenState extends State<HomeScreen> {
               _MetricItem(label: 'Posjeta ovaj mjesec', value: '10'),
             ],
           ),
+          const SizedBox(height: 12),
+          _TopCard(
+            title: 'Korpa',
+            subtitle: _shopCart.isEmpty
+                ? 'Trenutno nema artikala u korpi'
+                : '${_shopCart.length} artikala · ${_shopTotal.toStringAsFixed(0)} KM',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_shopCart.isEmpty)
+                  const Text(
+                    'Dodaj artikle iz Shop sekcije na Home tabu.',
+                    style: TextStyle(color: Color(0xFF64748B)),
+                  )
+                else ...[
+                  ..._shopCart.take(4).map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text('• ${item.title} - ${item.price.toStringAsFixed(0)} KM'),
+                    ),
+                  ),
+                  if (_shopCart.length > 4)
+                    Text(
+                      '+ još ${_shopCart.length - 4} artikala',
+                      style: const TextStyle(color: Color(0xFF64748B)),
+                    ),
+                  const SizedBox(height: 10),
+                ],
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _shopCart.isEmpty ? null : _openShopCheckout,
+                    icon: const Icon(Icons.shopping_cart_checkout),
+                    label: const Text('Otvori korpu'),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ] else ...[
           _ProfileMetricGrid(
             items: const [
@@ -1705,11 +1953,13 @@ class _OfferCard extends StatelessWidget {
   final String emoji;
   final String title;
   final String price;
+  final VoidCallback onBuy;
 
   const _OfferCard({
     required this.emoji,
     required this.title,
     required this.price,
+    required this.onBuy,
   });
 
   @override
@@ -1753,6 +2003,14 @@ class _OfferCard extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonal(
+              onPressed: onBuy,
+              child: const Text('Dodaj u korpu'),
+            ),
+          ),
         ],
       ),
     );
@@ -1763,17 +2021,19 @@ class _MembershipOfferCard extends StatelessWidget {
   final String emoji;
   final String title;
   final String price;
+  final VoidCallback onBuy;
 
   const _MembershipOfferCard({
     required this.emoji,
     required this.title,
     required this.price,
+    required this.onBuy,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -1787,6 +2047,8 @@ class _MembershipOfferCard extends StatelessWidget {
           Text(
             title,
             textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: Color(0xFF475569),
               fontWeight: FontWeight.w700,
@@ -1797,14 +2059,35 @@ class _MembershipOfferCard extends StatelessWidget {
             price,
             style: const TextStyle(
               color: Color(0xFF5D72E6),
-              fontSize: 24,
+              fontSize: 22,
               fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 34),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                padding: const EdgeInsets.symmetric(vertical: 6),
+              ),
+              onPressed: onBuy,
+              child: const Text('Kupi'),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+class _ShopCartItem {
+  final String title;
+  final double price;
+  final int quantity;
+
+  const _ShopCartItem({required this.title, required this.price, this.quantity = 1});
 }
 
 class _GroupTrainingTile extends StatelessWidget {

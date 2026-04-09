@@ -27,6 +27,24 @@ public record CheckoutSessionResultDto(
     string Url
 );
 
+public record ShopOrderItemDto(
+    string Name,
+    decimal UnitPrice,
+    int Quantity
+);
+
+public record CreateShopOrderDto(
+    List<ShopOrderItemDto> Items
+);
+
+public record ShopOrderResultDto(
+    int PaymentId,
+    decimal TotalAmount,
+    PaymentStatus Status,
+    DateTime CreatedAt,
+    DateTime? CompletedAt
+);
+
 // Reference DTOs
 public record CityDto(int Id, string Name, string? PostalCode, int CountryId, string CountryName);
 public record CountryDto(int Id, string Name, string Code);

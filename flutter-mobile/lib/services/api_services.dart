@@ -55,6 +55,18 @@ class MembershipService {
   }
 }
 
+class PaymentService {
+  static Future<Map<String, dynamic>> createShopOrder({
+    required List<Map<String, dynamic>> items,
+  }) async {
+    final data = await ApiClient.post('/payments/shop-order', {
+      'items': items,
+    });
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+}
+
 class TrainingSessionService {
   static Future<List<TrainingSessionModel>> getAll({int? gymId, int? trainerId, int? trainingTypeId}) async {
     final query = <String>[];
