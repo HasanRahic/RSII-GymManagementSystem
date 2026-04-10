@@ -45,6 +45,12 @@ public record ShopOrderResultDto(
     DateTime? CompletedAt
 );
 
+public record StripeCheckoutDto(
+    int PaymentId,
+    string SessionUrl,
+    decimal Amount
+);
+
 // Reference DTOs
 public record CityDto(int Id, string Name, string? PostalCode, int CountryId, string CountryName);
 public record CountryDto(int Id, string Name, string Code);

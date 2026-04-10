@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/models.dart';
 import '../providers/auth_provider.dart';
@@ -252,7 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Napomena: trenutno je omogućen demo checkout tok bez plaćanja karticom.',
+                'Napomena: plaćanje se obrađuje preko Stripe-a. Bit ćete preusmjereni na bezbedan checkout.',
                 style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
               ),
             ],
@@ -301,20 +302,51 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final result = await PaymentService.createShopOrder(items: payload);
       final paymentId = result['paymentId'];
-      final totalAmount = result['totalAmount'];
+      final sessionUrl = result['sessionUrl'];
+      final amount = result['amount'];
 
       if (!mounted) return;
+      
+      // Save scaffold messenger reference before async operations
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+      
+      // Clear the cart immediately
       setState(() {
         _shopCart.clear();
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Narudžba #$paymentId potvrđena (${(totalAmount as num).toStringAsFixed(0)} KM).',
-          ),
-        ),
-      );
+      // Open Stripe checkout URL
+      if (sessionUrl != null && sessionUrl.isNotEmpty) {
+        try {
+          if (await canLaunchUrl(Uri.parse(sessionUrl))) {
+            await launchUrl(
+              Uri.parse(sessionUrl),
+              mode: LaunchMode.externalApplication,
+            );
+            
+            if (!mounted) return;
+            scaffoldMessenger.showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Narudžba #$paymentId kreirana. Otvoren je Stripe checkout (${(amount as num).toStringAsFixed(0)} KM).',
+                ),
+              ),
+            );
+          } else {
+            throw 'Ne mogu otvoriti checkout URL.';
+          }
+        } catch (e) {
+          if (!mounted) return;
+          scaffoldMessenger.showSnackBar(
+            SnackBar(content: Text('Greška pri otvaranju checkota: $e')),
+          );
+        }
+      } else {
+        if (!mounted) return;
+        scaffoldMessenger.showSnackBar(
+          SnackBar(content: Text('Narudžba #$paymentId je kreirana.')),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
