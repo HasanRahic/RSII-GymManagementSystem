@@ -51,6 +51,13 @@ public record StripeCheckoutDto(
     decimal Amount
 );
 
+public record PaymentStatusDto(
+    int PaymentId,
+    PaymentStatus Status,
+    DateTime CreatedAt,
+    DateTime? CompletedAt
+);
+
 // Reference DTOs
 public record CityDto(int Id, string Name, string? PostalCode, int CountryId, string CountryName);
 public record CountryDto(int Id, string Name, string Code);

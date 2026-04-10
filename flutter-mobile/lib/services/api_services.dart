@@ -65,6 +65,11 @@ class PaymentService {
 
     return Map<String, dynamic>.from(data as Map);
   }
+
+  static Future<Map<String, dynamic>> getPaymentStatus(int paymentId) async {
+    final data = await ApiClient.get('/payments/$paymentId/status');
+    return Map<String, dynamic>.from(data as Map);
+  }
 }
 
 class TrainingSessionService {

@@ -332,6 +332,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             );
+
+            // Webhook can take a few seconds; poll status so the user gets feedback in-app.
+            await _trackPaymentStatus(
+              paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0,
+              scaffoldMessenger,
+            );
           } else {
             throw 'Ne mogu otvoriti checkout URL.';
           }
@@ -353,6 +359,49 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(content: Text('Checkout nije uspio: $e')),
       );
     }
+  }
+
+  Future<void> _trackPaymentStatus(
+    int paymentId,
+    ScaffoldMessengerState scaffoldMessenger,
+  ) async {
+    if (paymentId <= 0) return;
+
+    for (var i = 0; i < 12; i++) {
+      await Future.delayed(const Duration(seconds: 5));
+      if (!mounted) return;
+
+      try {
+        final result = await PaymentService.getPaymentStatus(paymentId);
+        final rawStatus = result['status'];
+        final status = '$rawStatus'.toLowerCase();
+        final isSucceeded = rawStatus == 1 || status == 'succeeded';
+        final isFailed = rawStatus == 2 || status == 'failed';
+
+        if (isSucceeded) {
+          if (!mounted) return;
+          scaffoldMessenger.showSnackBar(
+            SnackBar(content: Text('Uplata #$paymentId je uspješno potvrđena.')),
+          );
+          return;
+        }
+
+        if (isFailed) {
+          if (!mounted) return;
+          scaffoldMessenger.showSnackBar(
+            SnackBar(content: Text('Uplata #$paymentId nije uspjela.')),
+          );
+          return;
+        }
+      } catch (_) {
+        // Ignore transient polling errors and continue.
+      }
+    }
+
+    if (!mounted) return;
+    scaffoldMessenger.showSnackBar(
+      SnackBar(content: Text('Uplata #$paymentId je još uvijek u obradi.')),
+    );
   }
 
   Future<void> _purchaseMembershipPlan(MembershipPlanModel plan) async {

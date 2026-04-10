@@ -5,6 +5,7 @@ using Gym.Infrastructure.Data;
 using Gym.Services.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Stripe;
 using Stripe.Checkout;
 
@@ -15,6 +16,32 @@ namespace Gym.Api.Controllers;
 [Authorize]
 public class PaymentsController(GymDbContext context) : ControllerBase
 {
+    [HttpGet("{paymentId:int}/status")]
+    public async Task<IActionResult> GetStatus(int paymentId)
+    {
+        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(idClaim, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var payment = await context.Payments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == paymentId && p.UserId == userId);
+
+        if (payment is null)
+        {
+            return NotFound(new { message = "Uplata nije pronađena." });
+        }
+
+        return Ok(new PaymentStatusDto(
+            payment.Id,
+            payment.Status,
+            payment.CreatedAt,
+            payment.CompletedAt
+        ));
+    }
+
     [HttpPost("shop-order")]
     public async Task<IActionResult> CreateShopOrder([FromBody] CreateShopOrderDto dto)
     {
@@ -37,6 +64,19 @@ public class PaymentsController(GymDbContext context) : ControllerBase
         }
 
         var totalAmount = dto.Items.Sum(i => i.UnitPrice * i.Quantity);
+
+        var payment = new Payment
+        {
+            UserId = userId,
+            Amount = totalAmount,
+            Currency = "BAM",
+            Type = PaymentType.Shop,
+            Status = PaymentStatus.Pending,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        context.Payments.Add(payment);
+        await context.SaveChangesAsync();
 
         // Create Stripe line items from cart items
         var lineItems = dto.Items.Select(item => new SessionLineItemOptions
@@ -63,7 +103,13 @@ public class PaymentsController(GymDbContext context) : ControllerBase
             Mode = "payment",
             SuccessUrl = $"{domainUrl}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}",
             CancelUrl = $"{domainUrl}/checkout/cancel",
-            CustomerEmail = $"user{userId}@gym.local" // Stripe requires an email
+            CustomerEmail = $"user{userId}@gym.local", // Stripe requires an email
+            Metadata = new Dictionary<string, string>
+            {
+                ["paymentId"] = payment.Id.ToString(),
+                ["userId"] = userId.ToString(),
+                ["type"] = "Shop"
+            }
         };
 
         Session session;
@@ -74,22 +120,13 @@ public class PaymentsController(GymDbContext context) : ControllerBase
         }
         catch (StripeException ex)
         {
+            payment.Status = PaymentStatus.Failed;
+            payment.CompletedAt = DateTime.UtcNow;
+            await context.SaveChangesAsync();
             return BadRequest(new { message = $"Stripe greška: {ex.Message}" });
         }
 
-        // Create payment record with Pending status
-        var payment = new Payment
-        {
-            UserId = userId,
-            Amount = totalAmount,
-            Currency = "BAM",
-            Type = PaymentType.Shop,
-            Status = PaymentStatus.Pending,
-            StripeSessionId = session.Id,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        context.Payments.Add(payment);
+        payment.StripeSessionId = session.Id;
         await context.SaveChangesAsync();
 
         return Ok(new StripeCheckoutDto(
