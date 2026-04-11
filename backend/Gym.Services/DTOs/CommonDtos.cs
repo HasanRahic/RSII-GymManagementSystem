@@ -58,6 +58,16 @@ public record PaymentStatusDto(
     DateTime? CompletedAt
 );
 
+public record PaymentListItemDto(
+    int PaymentId,
+    PaymentType Type,
+    PaymentStatus Status,
+    decimal Amount,
+    string Currency,
+    DateTime CreatedAt,
+    DateTime? CompletedAt
+);
+
 // Reference DTOs
 public record CityDto(int Id, string Name, string? PostalCode, int CountryId, string CountryName);
 public record CountryDto(int Id, string Name, string Code);

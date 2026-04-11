@@ -56,6 +56,11 @@ class MembershipService {
 }
 
 class PaymentService {
+  static Future<List<Map<String, dynamic>>> getMyPayments({int take = 20}) async {
+    final data = await ApiClient.get('/payments/my?take=$take') as List;
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
   static Future<Map<String, dynamic>> createShopOrder({
     required List<Map<String, dynamic>> items,
   }) async {

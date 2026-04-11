@@ -16,6 +16,36 @@ namespace Gym.Api.Controllers;
 [Authorize]
 public class PaymentsController(GymDbContext context) : ControllerBase
 {
+    [HttpGet("my")]
+    public async Task<IActionResult> GetMyPayments([FromQuery] int take = 20)
+    {
+        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(idClaim, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        take = Math.Clamp(take, 1, 100);
+
+        var items = await context.Payments
+            .AsNoTracking()
+            .Where(p => p.UserId == userId)
+            .OrderByDescending(p => p.CreatedAt)
+            .Take(take)
+            .Select(p => new PaymentListItemDto(
+                p.Id,
+                p.Type,
+                p.Status,
+                p.Amount,
+                p.Currency,
+                p.CreatedAt,
+                p.CompletedAt
+            ))
+            .ToListAsync();
+
+        return Ok(items);
+    }
+
     [HttpGet("{paymentId:int}/status")]
     public async Task<IActionResult> GetStatus(int paymentId)
     {
@@ -65,6 +95,17 @@ public class PaymentsController(GymDbContext context) : ControllerBase
 
         var totalAmount = dto.Items.Sum(i => i.UnitPrice * i.Quantity);
 
+        var userEmail = await context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => u.Email)
+            .FirstOrDefaultAsync();
+
+        if (string.IsNullOrWhiteSpace(userEmail))
+        {
+            return BadRequest(new { message = "Korisnik nema validan email za Stripe checkout." });
+        }
+
         var payment = new Payment
         {
             UserId = userId,
@@ -103,7 +144,7 @@ public class PaymentsController(GymDbContext context) : ControllerBase
             Mode = "payment",
             SuccessUrl = $"{domainUrl}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}",
             CancelUrl = $"{domainUrl}/checkout/cancel",
-            CustomerEmail = $"user{userId}@gym.local", // Stripe requires an email
+            CustomerEmail = userEmail,
             Metadata = new Dictionary<string, string>
             {
                 ["paymentId"] = payment.Id.ToString(),

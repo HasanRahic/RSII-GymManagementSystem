@@ -89,6 +89,14 @@ public class StripeWebhookController : ControllerBase
             p.StripeSessionId == session.Id ||
             (!string.IsNullOrWhiteSpace(session.PaymentIntentId) && p.StripePaymentIntentId == session.PaymentIntentId));
 
+        if (payment is null &&
+            session.Metadata is not null &&
+            session.Metadata.TryGetValue("paymentId", out var paymentIdRaw) &&
+            int.TryParse(paymentIdRaw, out var paymentId))
+        {
+            payment = await _context.Payments.FirstOrDefaultAsync(p => p.Id == paymentId);
+        }
+
         if (payment is null)
         {
             _logger.LogInformation("Stripe checkout session {SessionId} completed but no payment record was found.", session.Id);
@@ -112,6 +120,13 @@ public class StripeWebhookController : ControllerBase
         }
 
         var payment = await _context.Payments.FirstOrDefaultAsync(p => p.StripePaymentIntentId == paymentIntent.Id);
+        if (payment is null &&
+            paymentIntent.Metadata is not null &&
+            paymentIntent.Metadata.TryGetValue("paymentId", out var paymentIdRaw) &&
+            int.TryParse(paymentIdRaw, out var paymentId))
+        {
+            payment = await _context.Payments.FirstOrDefaultAsync(p => p.Id == paymentId);
+        }
         if (payment is null)
         {
             _logger.LogInformation("Stripe payment intent {PaymentIntentId} succeeded but no payment record was found.", paymentIntent.Id);
@@ -134,6 +149,13 @@ public class StripeWebhookController : ControllerBase
         }
 
         var payment = await _context.Payments.FirstOrDefaultAsync(p => p.StripePaymentIntentId == paymentIntent.Id);
+        if (payment is null &&
+            paymentIntent.Metadata is not null &&
+            paymentIntent.Metadata.TryGetValue("paymentId", out var paymentIdRaw) &&
+            int.TryParse(paymentIdRaw, out var paymentId))
+        {
+            payment = await _context.Payments.FirstOrDefaultAsync(p => p.Id == paymentId);
+        }
         if (payment is null)
         {
             _logger.LogInformation("Stripe payment intent {PaymentIntentId} failed but no payment record was found.", paymentIntent.Id);

@@ -37,6 +37,8 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> _cities = ['Svi gradovi'];
   List<String> _trainingTypes = [];
   final List<_ShopCartItem> _shopCart = [];
+  List<Map<String, dynamic>> _recentPayments = [];
+  bool _loadingPayments = true;
 
   @override
   void initState() {
@@ -44,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadMembership();
     _loadCatalog();
     _syncCheckInState();
+    _loadPayments();
   }
 
   @override
@@ -119,7 +122,49 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadMembership(),
       _loadCatalog(),
       _syncCheckInState(),
+      _loadPayments(),
     ]);
+  }
+
+  Future<void> _loadPayments() async {
+    setState(() => _loadingPayments = true);
+    try {
+      final payments = await PaymentService.getMyPayments(take: 20);
+      if (!mounted) return;
+      setState(() => _recentPayments = payments);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _recentPayments = []);
+    } finally {
+      if (mounted) setState(() => _loadingPayments = false);
+    }
+  }
+
+  String _paymentTypeLabel(dynamic rawType) {
+    final t = '$rawType'.toLowerCase();
+    if (rawType == 0 || t == 'membership') return 'Članarina';
+    if (rawType == 1 || t == 'session') return 'Trening';
+    if (rawType == 2 || t == 'shop') return 'Shop';
+    return 'Uplata';
+  }
+
+  String _paymentStatusLabel(dynamic rawStatus) {
+    final s = '$rawStatus'.toLowerCase();
+    if (rawStatus == 0 || s == 'pending') return 'U obradi';
+    if (rawStatus == 1 || s == 'succeeded') return 'Uspješno';
+    if (rawStatus == 2 || s == 'failed') return 'Neuspješno';
+    return 'Nepoznato';
+  }
+
+  String _formatIsoDate(dynamic rawDate) {
+    if (rawDate == null) return '-';
+    final parsed = DateTime.tryParse('$rawDate');
+    if (parsed == null) return '$rawDate';
+    final d = parsed.toLocal();
+    final dd = d.day.toString().padLeft(2, '0');
+    final mm = d.month.toString().padLeft(2, '0');
+    final yyyy = d.year.toString();
+    return '$dd.$mm.$yyyy';
   }
 
   Future<void> _syncCheckInState() async {
@@ -1678,19 +1723,62 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 12),
         if (_profileSection == 'Historija') ...[
-          _HistoryCard(title: 'Mjesečna članarina', value: '50 KM', date: '01.11.2025'),
-          const SizedBox(height: 10),
-          _HistoryCard(title: 'Whey Protein 1kg', value: '89 KM', date: '28.10.2025'),
-          const SizedBox(height: 10),
-          _HistoryCard(title: 'FitTrack Majica', value: '35 KM', date: '15.09.2025'),
+          if (_loadingPayments)
+            const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()))
+          else if (_recentPayments.isEmpty)
+            const _TopCard(
+              title: 'Historija',
+              subtitle: 'Nema evidentiranih plaćanja',
+              child: Text('Kada obavite uplatu, pojavit će se ovdje.'),
+            )
+          else ...[
+            for (var i = 0; i < _recentPayments.length && i < 5; i++) ...[
+              _HistoryCard(
+                title: _paymentTypeLabel(_recentPayments[i]['type']),
+                value: '${((_recentPayments[i]['amount'] as num?) ?? 0).toStringAsFixed(0)} ${_recentPayments[i]['currency'] ?? 'KM'}',
+                date: _formatIsoDate(_recentPayments[i]['createdAt']),
+              ),
+              if (i < 4 && i < _recentPayments.length - 1) const SizedBox(height: 10),
+            ],
+          ],
         ] else if (_profileSection == 'Billing') ...[
           _ProfileMetricGrid(
-            items: const [
-              _MetricItem(label: 'Ukupno narudžbi', value: '18'),
-              _MetricItem(label: 'Ukupno plaćeno', value: '1.245 KM'),
-              _MetricItem(label: 'Aktivna članarina', value: 'Da'),
-              _MetricItem(label: 'Posjeta ovaj mjesec', value: '10'),
+            items: [
+              _MetricItem(label: 'Ukupno uplata', value: '${_recentPayments.length}'),
+              _MetricItem(
+                label: 'Ukupno plaćeno',
+                value: '${_recentPayments
+                        .where((p) {
+                          final s = '${p['status']}'.toLowerCase();
+                          return p['status'] == 1 || s == 'succeeded';
+                        })
+                        .fold<double>(0, (sum, p) => sum + (((p['amount'] as num?) ?? 0).toDouble()))
+                        .toStringAsFixed(0)} KM',
+              ),
+              _MetricItem(label: 'Aktivna članarina', value: _activeMembership == null ? 'Ne' : 'Da'),
+              _MetricItem(label: 'U obradi', value: '${_recentPayments.where((p) {
+                final s = '${p['status']}'.toLowerCase();
+                return p['status'] == 0 || s == 'pending';
+              }).length}'),
             ],
+          ),
+          const SizedBox(height: 12),
+          _TopCard(
+            title: 'Zadnje transakcije',
+            subtitle: _recentPayments.isEmpty ? 'Nema transakcija' : 'Posljednjih ${_recentPayments.length > 3 ? 3 : _recentPayments.length}',
+            child: _recentPayments.isEmpty
+                ? const Text('Još nema završenih transakcija.', style: TextStyle(color: Color(0xFF64748B)))
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (var i = 0; i < _recentPayments.length && i < 3; i++) ...[
+                        Text(
+                          '• #${_recentPayments[i]['paymentId']} ${_paymentTypeLabel(_recentPayments[i]['type'])} - ${((_recentPayments[i]['amount'] as num?) ?? 0).toStringAsFixed(0)} ${_recentPayments[i]['currency'] ?? 'KM'} (${_paymentStatusLabel(_recentPayments[i]['status'])})',
+                        ),
+                        const SizedBox(height: 6),
+                      ],
+                    ],
+                  ),
           ),
           const SizedBox(height: 12),
           _TopCard(
