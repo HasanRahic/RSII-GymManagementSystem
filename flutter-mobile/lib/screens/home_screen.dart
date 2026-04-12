@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../models/models.dart';
 import '../providers/auth_provider.dart';
@@ -8,6 +7,7 @@ import '../services/api_services.dart';
 import 'checkin_history_screen.dart';
 import 'checkin_screen.dart';
 import 'my_memberships_screen.dart';
+import 'stripe_checkout_screen.dart';
 import 'trainer_application_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -245,11 +245,38 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   double get _shopTotal =>
-      _shopCart.fold(0, (sum, item) => sum + item.price);
+      _shopCart.fold(0, (sum, item) => sum + (item.price * item.quantity));
+
+  int get _shopItemsCount =>
+      _shopCart.fold(0, (sum, item) => sum + item.quantity);
+
+  Future<bool> _launchStripeCheckout(String sessionUrl) async {
+    if (!mounted) return false;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StripeCheckoutScreen(checkoutUrl: sessionUrl),
+      ),
+    );
+    return true;
+  }
 
   Future<void> _addShopItemToCart(String title, double price) async {
     setState(() {
-      _shopCart.add(_ShopCartItem(title: title, price: price));
+      final index = _shopCart.indexWhere(
+        (item) => item.title == title && item.price == price,
+      );
+
+      if (index >= 0) {
+        final existing = _shopCart[index];
+        _shopCart[index] = _ShopCartItem(
+          title: existing.title,
+          price: existing.price,
+          quantity: existing.quantity + 1,
+        );
+      } else {
+        _shopCart.add(_ShopCartItem(title: title, price: price, quantity: 1));
+      }
     });
 
     if (!mounted) return;
@@ -265,6 +292,27 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       );
+  }
+
+  void _changeCartItemQuantity(_ShopCartItem item, int delta) {
+    setState(() {
+      final index = _shopCart.indexWhere(
+        (x) => x.title == item.title && x.price == item.price,
+      );
+      if (index < 0) return;
+
+      final current = _shopCart[index];
+      final nextQty = current.quantity + delta;
+      if (nextQty <= 0) {
+        _shopCart.removeAt(index);
+      } else {
+        _shopCart[index] = _ShopCartItem(
+          title: current.title,
+          price: current.price,
+          quantity: nextQty,
+        );
+      }
+    });
   }
 
   Future<void> _openShopCheckout() async {
@@ -288,7 +336,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ..._shopCart.map(
                 (item) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),
-                  child: Text('• ${item.title} - ${item.price.toStringAsFixed(0)} KM'),
+                  child: Text('• ${item.title} x${item.quantity} - ${(item.price * item.quantity).toStringAsFixed(0)} KM'),
                 ),
               ),
               const Divider(height: 18),
@@ -319,22 +367,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (confirmed != true) return;
 
-    final grouped = <String, _ShopCartItem>{};
-    for (final item in _shopCart) {
-      final key = '${item.title}|${item.price.toStringAsFixed(2)}';
-      final existing = grouped[key];
-      if (existing == null) {
-        grouped[key] = _ShopCartItem(title: item.title, price: item.price, quantity: 1);
-      } else {
-        grouped[key] = _ShopCartItem(
-          title: existing.title,
-          price: existing.price,
-          quantity: existing.quantity + 1,
-        );
-      }
-    }
-
-    final payload = grouped.values
+    final payload = _shopCart
         .map(
           (item) => {
             'name': item.title,
@@ -363,11 +396,8 @@ class _HomeScreenState extends State<HomeScreen> {
       // Open Stripe checkout URL
       if (sessionUrl != null && sessionUrl.isNotEmpty) {
         try {
-          if (await canLaunchUrl(Uri.parse(sessionUrl))) {
-            await launchUrl(
-              Uri.parse(sessionUrl),
-              mode: LaunchMode.externalApplication,
-            );
+          final launched = await _launchStripeCheckout(sessionUrl);
+          if (launched) {
             
             if (!mounted) return;
             scaffoldMessenger.showSnackBar(
@@ -450,15 +480,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _purchaseMembershipPlan(MembershipPlanModel plan) async {
-    final auth = context.read<AuthProvider>();
-    final user = auth.user;
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Korisnik nije prijavljen.')),
-      );
-      return;
-    }
-
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -500,20 +521,51 @@ class _HomeScreenState extends State<HomeScreen> {
     if (confirmed != true) return;
 
     try {
-      await MembershipService.renew(
-        userId: user.id,
+      if (!mounted) return;
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+      final result = await PaymentService.createMembershipCheckout(
         membershipPlanId: plan.id,
       );
-      if (!mounted) return;
+      final paymentId = result['paymentId'];
+      final sessionUrl = result['sessionUrl'];
+      final amount = result['amount'];
+
+      if (sessionUrl != null && sessionUrl.toString().isNotEmpty) {
+        final launched = await _launchStripeCheckout(sessionUrl.toString());
+        if (!launched) {
+          throw 'Ne mogu otvoriti checkout URL.';
+        }
+
+        if (!mounted) return;
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Članarina "${plan.name}" je poslana na Stripe checkout (${(amount as num).toStringAsFixed(0)} KM).',
+            ),
+          ),
+        );
+
+        await _trackPaymentStatus(
+          paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0,
+          scaffoldMessenger,
+        );
+      } else {
+        scaffoldMessenger.showSnackBar(
+          SnackBar(content: Text('Stripe checkout nije dostupan za članarinu "${plan.name}".')),
+        );
+      }
+
       await _loadMembership();
+      await _loadPayments();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Članarina "${plan.name}" je aktivirana.')),
+        SnackBar(content: Text('Proces kupovine članarine "${plan.name}" je pokrenut.')),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Kupovina nije uspjela: $e')),
+        SnackBar(content: Text('Greška pri plaćanju članarine: $e')),
       );
     }
   }
@@ -1057,7 +1109,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: TextButton.icon(
               onPressed: _openShopCheckout,
               icon: const Icon(Icons.shopping_cart_checkout),
-              label: Text('Korpa (${_shopCart.length}) · ${_shopTotal.toStringAsFixed(0)} KM'),
+              label: Text('Korpa ($_shopItemsCount) · ${_shopTotal.toStringAsFixed(0)} KM'),
             ),
           ),
         ],
@@ -1785,7 +1837,7 @@ class _HomeScreenState extends State<HomeScreen> {
             title: 'Korpa',
             subtitle: _shopCart.isEmpty
                 ? 'Trenutno nema artikala u korpi'
-                : '${_shopCart.length} artikala · ${_shopTotal.toStringAsFixed(0)} KM',
+                : '$_shopItemsCount artikala · ${_shopTotal.toStringAsFixed(0)} KM',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1798,7 +1850,23 @@ class _HomeScreenState extends State<HomeScreen> {
                   ..._shopCart.take(4).map(
                     (item) => Padding(
                       padding: const EdgeInsets.only(bottom: 6),
-                      child: Text('• ${item.title} - ${item.price.toStringAsFixed(0)} KM'),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text('• ${item.title} x${item.quantity} - ${(item.price * item.quantity).toStringAsFixed(0)} KM'),
+                          ),
+                          IconButton(
+                            onPressed: () => _changeCartItemQuantity(item, -1),
+                            icon: const Icon(Icons.remove_circle_outline),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          IconButton(
+                            onPressed: () => _changeCartItemQuantity(item, 1),
+                            icon: const Icon(Icons.add_circle_outline),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   if (_shopCart.length > 4)

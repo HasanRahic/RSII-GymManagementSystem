@@ -68,6 +68,45 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> register({
+    required String firstName,
+    required String lastName,
+    required String username,
+    required String email,
+    required String password,
+    String? phoneNumber,
+    DateTime? dateOfBirth,
+    int? cityId,
+  }) async {
+    _loading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final data = await ApiClient.post('/auth/register', {
+        'firstName': firstName,
+        'lastName': lastName,
+        'username': username,
+        'email': email,
+        'password': password,
+        'phoneNumber': phoneNumber,
+        'dateOfBirth': dateOfBirth?.toIso8601String(),
+        'cityId': cityId,
+      });
+      _user = AuthResponse.fromJson(data);
+      await ApiClient.setToken(_user!.token);
+    } on ApiException catch (e) {
+      _error = e.message;
+      rethrow;
+    } catch (_) {
+      _error = 'Greska pri registraciji.';
+      rethrow;
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> logout() async {
     await ApiClient.setToken(null);
     _user = null;

@@ -3,6 +3,7 @@ using Gym.Core.Entities;
 using Gym.Core.Enums;
 using Gym.Infrastructure.Data;
 using Gym.Services.DTOs;
+using Gym.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -150,6 +151,114 @@ public class PaymentsController(GymDbContext context) : ControllerBase
                 ["paymentId"] = payment.Id.ToString(),
                 ["userId"] = userId.ToString(),
                 ["type"] = "Shop"
+            }
+        };
+
+        Session session;
+        try
+        {
+            var sessionService = new SessionService();
+            session = await sessionService.CreateAsync(options);
+        }
+        catch (StripeException ex)
+        {
+            payment.Status = PaymentStatus.Failed;
+            payment.CompletedAt = DateTime.UtcNow;
+            await context.SaveChangesAsync();
+            return BadRequest(new { message = $"Stripe greška: {ex.Message}" });
+        }
+
+        payment.StripeSessionId = session.Id;
+        await context.SaveChangesAsync();
+
+        return Ok(new StripeCheckoutDto(
+            payment.Id,
+            session.Url ?? string.Empty,
+            payment.Amount
+        ));
+    }
+
+    [HttpPost("membership-checkout")]
+    public async Task<IActionResult> CreateMembershipCheckout([FromBody] CreateCheckoutSessionDto dto)
+    {
+        if (dto.Type != PaymentType.Membership || !dto.MembershipPlanId.HasValue)
+        {
+            return BadRequest(new { message = "Neispravan tip članarine." });
+        }
+
+        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(idClaim, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var plan = await context.MembershipPlans
+            .Include(p => p.Gym)
+            .FirstOrDefaultAsync(p => p.Id == dto.MembershipPlanId.Value);
+
+        if (plan is null)
+        {
+            return NotFound(new { message = "Plan članarine nije pronađen." });
+        }
+
+        var userEmail = await context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => u.Email)
+            .FirstOrDefaultAsync();
+
+        if (string.IsNullOrWhiteSpace(userEmail))
+        {
+            return BadRequest(new { message = "Korisnik nema validan email za Stripe checkout." });
+        }
+
+        var discountPercent = Math.Clamp(dto.DiscountPercent, 0, 100);
+        var totalAmount = plan.Price * (1 - discountPercent / 100m);
+
+        var payment = new Payment
+        {
+            UserId = userId,
+            Amount = totalAmount,
+            Currency = "BAM",
+            Type = PaymentType.Membership,
+            Status = PaymentStatus.Pending,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        context.Payments.Add(payment);
+        await context.SaveChangesAsync();
+
+        var options = new SessionCreateOptions
+        {
+            PaymentMethodTypes = new List<string> { "card" },
+            LineItems = new List<SessionLineItemOptions>
+            {
+                new()
+                {
+                    PriceData = new SessionLineItemPriceDataOptions
+                    {
+                        Currency = "bam",
+                        ProductData = new SessionLineItemPriceDataProductDataOptions
+                        {
+                            Name = plan.Name,
+                            Description = $"Članarina za {plan.Gym.Name}"
+                        },
+                        UnitAmountDecimal = totalAmount * 100m
+                    },
+                    Quantity = 1
+                }
+            },
+            Mode = "payment",
+            SuccessUrl = $"{Request.Scheme}://{Request.Host}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}",
+            CancelUrl = $"{Request.Scheme}://{Request.Host}/checkout/cancel",
+            CustomerEmail = userEmail,
+            Metadata = new Dictionary<string, string>
+            {
+                ["paymentId"] = payment.Id.ToString(),
+                ["userId"] = userId.ToString(),
+                ["type"] = "Membership",
+                ["membershipPlanId"] = plan.Id.ToString(),
+                ["discountPercent"] = discountPercent.ToString(System.Globalization.CultureInfo.InvariantCulture)
             }
         };
 

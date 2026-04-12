@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../core/constants.dart';
-import 'package:provider/provider.dart';
 import '../models/models.dart';
-import '../providers/auth_provider.dart';
 import '../services/api_services.dart';
+import 'stripe_checkout_screen.dart';
 
 class MyMembershipsScreen extends StatefulWidget {
   const MyMembershipsScreen({super.key});
@@ -59,16 +58,54 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
     }
   }
 
-  Future<void> _renewMembership(UserMembership membership) async {
-    final auth = context.read<AuthProvider>();
-    final user = auth.user;
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Korisnik nije prijavljen.'), backgroundColor: kRed),
-      );
-      return;
-    }
+  Future<bool> _launchStripeCheckout(String sessionUrl) async {
+    if (!mounted) return false;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StripeCheckoutScreen(checkoutUrl: sessionUrl),
+      ),
+    );
+    return true;
+  }
 
+  Future<void> _trackPaymentStatus(int paymentId) async {
+    if (paymentId <= 0) return;
+
+    for (var i = 0; i < 12; i++) {
+      await Future.delayed(const Duration(seconds: 5));
+      if (!mounted) return;
+
+      try {
+        final result = await PaymentService.getPaymentStatus(paymentId);
+        final rawStatus = result['status'];
+        final status = '$rawStatus'.toLowerCase();
+        final succeeded = rawStatus == 1 || status == 'succeeded';
+        final failed = rawStatus == 2 || status == 'failed';
+
+        if (succeeded) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Članarina #$paymentId je uspješno plaćena.'), backgroundColor: kGreen),
+          );
+          await _load();
+          return;
+        }
+
+        if (failed) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Plaćanje članarine #$paymentId nije uspjelo.'), backgroundColor: kRed),
+          );
+          return;
+        }
+      } catch (_) {
+        // Ignore transient polling errors.
+      }
+    }
+  }
+
+  Future<void> _renewMembership(UserMembership membership) async {
     final discountCtrl = TextEditingController(text: '0');
     final formKey = GlobalKey<FormState>();
 
@@ -131,18 +168,42 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
     if (confirmed != true) return;
 
     try {
-      await MembershipService.renew(
-        userId: user.id,
+      final result = await PaymentService.createMembershipCheckout(
         membershipPlanId: membership.membershipPlanId,
         discountPercent: double.parse(discountCtrl.text.replaceAll(',', '.')),
       );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Članarina je obnovljena.'),
-          backgroundColor: kGreen,
-        ),
-      );
+
+      final paymentId = result['paymentId'];
+      final sessionUrl = result['sessionUrl'];
+      final amount = result['amount'];
+
+      if (sessionUrl != null && sessionUrl.toString().isNotEmpty) {
+        final launched = await _launchStripeCheckout(sessionUrl.toString());
+        if (!launched) {
+          throw 'Ne mogu otvoriti checkout URL.';
+        }
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Stripe checkout otvoren za ${membership.planName} (${(amount as num).toStringAsFixed(0)} KM).',
+            ),
+            backgroundColor: kGreen,
+          ),
+        );
+
+        await _trackPaymentStatus(paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Stripe checkout nije dostupan.'),
+            backgroundColor: kRed,
+          ),
+        );
+      }
+
       await _load();
     } catch (e) {
       if (!mounted) return;

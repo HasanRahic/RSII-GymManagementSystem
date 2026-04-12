@@ -61,6 +61,20 @@ class PaymentService {
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
+  static Future<Map<String, dynamic>> createMembershipCheckout({
+    required int membershipPlanId,
+    double discountPercent = 0,
+  }) async {
+    final data = await ApiClient.post('/payments/membership-checkout', {
+      'type': 0,
+      'membershipPlanId': membershipPlanId,
+      'trainingSessionId': null,
+      'discountPercent': discountPercent,
+    });
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   static Future<Map<String, dynamic>> createShopOrder({
     required List<Map<String, dynamic>> items,
   }) async {

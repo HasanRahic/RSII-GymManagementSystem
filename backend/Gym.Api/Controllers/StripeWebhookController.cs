@@ -1,5 +1,7 @@
 using Gym.Core.Enums;
 using Gym.Infrastructure.Data;
+using Gym.Services.DTOs;
+using Gym.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,15 +15,18 @@ namespace Gym.Api.Controllers;
 public class StripeWebhookController : ControllerBase
 {
     private readonly GymDbContext _context;
+    private readonly IMembershipService _membershipService;
     private readonly ILogger<StripeWebhookController> _logger;
     private readonly IConfiguration _configuration;
 
     public StripeWebhookController(
         GymDbContext context,
+        IMembershipService membershipService,
         ILogger<StripeWebhookController> logger,
         IConfiguration configuration)
     {
         _context = context;
+        _membershipService = membershipService;
         _logger = logger;
         _configuration = configuration;
     }
@@ -105,8 +110,35 @@ public class StripeWebhookController : ControllerBase
 
         payment.StripeSessionId = session.Id;
         payment.StripePaymentIntentId = session.PaymentIntentId ?? payment.StripePaymentIntentId;
-        payment.Status = PaymentStatus.Succeeded;
-        payment.CompletedAt ??= DateTime.UtcNow;
+
+        if (payment.Status != PaymentStatus.Succeeded)
+        {
+            if (payment.Type == PaymentType.Membership)
+            {
+                var metadata = session.Metadata ?? new Dictionary<string, string>();
+
+                if (!metadata.TryGetValue("membershipPlanId", out var planIdRaw) ||
+                    !int.TryParse(planIdRaw, out var planId))
+                {
+                    _logger.LogWarning("Stripe membership session {SessionId} is missing membershipPlanId metadata.", session.Id);
+                    return;
+                }
+
+                var discountPercent = 0m;
+                if (metadata.TryGetValue("discountPercent", out var discountRaw))
+                {
+                    decimal.TryParse(discountRaw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out discountPercent);
+                }
+
+                await _membershipService.RenewAsync(new RenewMembershipDto(
+                    payment.UserId,
+                    planId,
+                    discountPercent));
+            }
+
+            payment.Status = PaymentStatus.Succeeded;
+            payment.CompletedAt ??= DateTime.UtcNow;
+        }
 
         await _context.SaveChangesAsync();
     }

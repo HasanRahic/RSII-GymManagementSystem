@@ -279,6 +279,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : const Text('Prijava'),
                           ),
                         ),
+                        const SizedBox(height: 12),
+                        TextButton(
+                          onPressed: _loading ? null : () => Navigator.pushNamed(context, '/register'),
+                          child: const Text('Nemate račun? Registrujte se'),
+                        ),
                       ],
                     ),
                   ),

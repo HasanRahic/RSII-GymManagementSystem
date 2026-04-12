@@ -4,6 +4,7 @@ import 'core/constants.dart';
 import 'providers/auth_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/register_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,6 +33,7 @@ class GymMobileApp extends StatelessWidget {
       routes: {
         '/': (ctx) => const _AuthGate(),
         '/login': (ctx) => const LoginScreen(),
+        '/register': (ctx) => const RegisterScreen(),
         '/home': (ctx) => const HomeScreen(),
       },
     );
