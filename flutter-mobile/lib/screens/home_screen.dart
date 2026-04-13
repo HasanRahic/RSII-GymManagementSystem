@@ -39,6 +39,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<_ShopCartItem> _shopCart = [];
   List<Map<String, dynamic>> _recentPayments = [];
   bool _loadingPayments = true;
+  String _billingTypeFilter = 'Sve';
+  bool _billingSortNewestFirst = true;
 
   @override
   void initState() {
@@ -250,6 +252,41 @@ class _HomeScreenState extends State<HomeScreen> {
   int get _shopItemsCount =>
       _shopCart.fold(0, (sum, item) => sum + item.quantity);
 
+  DateTime _paymentCreatedAt(Map<String, dynamic> payment) {
+    final raw = payment['createdAt'];
+    if (raw == null) return DateTime.fromMillisecondsSinceEpoch(0);
+    return DateTime.tryParse('$raw') ?? DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  bool _matchesBillingType(Map<String, dynamic> payment) {
+    if (_billingTypeFilter == 'Sve') return true;
+
+    final typeLabel = _paymentTypeLabel(payment['type']);
+    if (_billingTypeFilter == 'Članarine') {
+      return typeLabel == 'Članarina';
+    }
+
+    return typeLabel == _billingTypeFilter;
+  }
+
+  List<Map<String, dynamic>> get _billingPayments {
+    final filtered = _recentPayments
+        .where(_matchesBillingType)
+        .map((p) => Map<String, dynamic>.from(p))
+        .toList();
+
+    filtered.sort((a, b) {
+      final aDate = _paymentCreatedAt(a);
+      final bDate = _paymentCreatedAt(b);
+      if (_billingSortNewestFirst) {
+        return bDate.compareTo(aDate);
+      }
+      return aDate.compareTo(bDate);
+    });
+
+    return filtered;
+  }
+
   Future<bool> _launchStripeCheckout(String sessionUrl) async {
     if (!mounted) return false;
     await Navigator.push(
@@ -315,6 +352,18 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _removeCartItem(_ShopCartItem item) {
+    setState(() {
+      _shopCart.removeWhere(
+        (x) => x.title == item.title && x.price == item.price,
+      );
+    });
+  }
+
+  void _clearCart() {
+    setState(() => _shopCart.clear());
+  }
+
   Future<void> _openShopCheckout() async {
     if (_shopCart.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -325,47 +374,115 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Shop korpa'),
-        content: SizedBox(
-          width: 420,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ..._shopCart.map(
-                (item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text('• ${item.title} x${item.quantity} - ${(item.price * item.quantity).toStringAsFixed(0)} KM'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Shop korpa'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_shopCart.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: Text('Korpa je prazna.'),
+                  )
+                else
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 240),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: _shopCart
+                            .map(
+                              (item) => Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        '${item.title} x${item.quantity} - ${(item.price * item.quantity).toStringAsFixed(0)} KM',
+                                      ),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Smanji količinu',
+                                      onPressed: () {
+                                        _changeCartItemQuantity(item, -1);
+                                        setLocal(() {});
+                                      },
+                                      icon: const Icon(Icons.remove_circle_outline),
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Povećaj količinu',
+                                      onPressed: () {
+                                        _changeCartItemQuantity(item, 1);
+                                        setLocal(() {});
+                                      },
+                                      icon: const Icon(Icons.add_circle_outline),
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Ukloni artikal',
+                                      onPressed: () {
+                                        _removeCartItem(item);
+                                        setLocal(() {});
+                                      },
+                                      icon: const Icon(Icons.delete_outline),
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                  ),
+                const Divider(height: 18),
+                Text(
+                  'Ukupno: ${_shopTotal.toStringAsFixed(0)} KM',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
-              ),
-              const Divider(height: 18),
-              Text(
-                'Ukupno: ${_shopTotal.toStringAsFixed(0)} KM',
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Napomena: plaćanje se obrađuje preko Stripe-a. Bit ćete preusmjereni na bezbedan checkout.',
-                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-              ),
-            ],
+                const SizedBox(height: 8),
+                const Text(
+                  'Napomena: plaćanje se obrađuje preko Stripe-a. Bit ćete preusmjereni na bezbedan checkout.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: _shopCart.isEmpty
+                  ? null
+                  : () {
+                      _clearCart();
+                      setLocal(() {});
+                    },
+              child: const Text('Isprazni korpu'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Zatvori'),
+            ),
+            FilledButton(
+              onPressed: _shopCart.isEmpty ? null : () => Navigator.pop(ctx, true),
+              child: const Text('Potvrdi narudžbu'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Zatvori'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Potvrdi narudžbu'),
-          ),
-        ],
       ),
     );
 
+    if (!mounted) return;
     if (confirmed != true) return;
+    if (_shopCart.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Korpa je prazna.')),
+      );
+      return;
+    }
 
     final payload = _shopCart
         .map(
@@ -1701,6 +1818,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final membershipRange = _activeMembership == null
         ? 'Nema aktivne članarine'
         : '${_formatDate(_activeMembership!.startDate)} - ${_formatDate(_activeMembership!.endDate)}';
+    final billingPayments = _billingPayments;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -1815,17 +1933,49 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              ChoiceChip(
+                label: const Text('Sve'),
+                selected: _billingTypeFilter == 'Sve',
+                onSelected: (_) => setState(() => _billingTypeFilter = 'Sve'),
+              ),
+              ChoiceChip(
+                label: const Text('Članarine'),
+                selected: _billingTypeFilter == 'Članarine',
+                onSelected: (_) => setState(() => _billingTypeFilter = 'Članarine'),
+              ),
+              ChoiceChip(
+                label: const Text('Shop'),
+                selected: _billingTypeFilter == 'Shop',
+                onSelected: (_) => setState(() => _billingTypeFilter = 'Shop'),
+              ),
+              ChoiceChip(
+                label: Text(_billingSortNewestFirst ? 'Najnovije prvo' : 'Najstarije prvo'),
+                selected: true,
+                onSelected: (_) => setState(() => _billingSortNewestFirst = !_billingSortNewestFirst),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           _TopCard(
             title: 'Zadnje transakcije',
-            subtitle: _recentPayments.isEmpty ? 'Nema transakcija' : 'Posljednjih ${_recentPayments.length > 3 ? 3 : _recentPayments.length}',
-            child: _recentPayments.isEmpty
+            subtitle: billingPayments.isEmpty ? 'Nema transakcija za odabrani filter' : 'Posljednjih ${billingPayments.length > 3 ? 3 : billingPayments.length}',
+            child: billingPayments.isEmpty
                 ? const Text('Još nema završenih transakcija.', style: TextStyle(color: Color(0xFF64748B)))
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (var i = 0; i < _recentPayments.length && i < 3; i++) ...[
+                      for (var i = 0; i < billingPayments.length && i < 3; i++) ...[
                         Text(
-                          '• #${_recentPayments[i]['paymentId']} ${_paymentTypeLabel(_recentPayments[i]['type'])} - ${((_recentPayments[i]['amount'] as num?) ?? 0).toStringAsFixed(0)} ${_recentPayments[i]['currency'] ?? 'KM'} (${_paymentStatusLabel(_recentPayments[i]['status'])})',
+                          '• #${billingPayments[i]['paymentId']} ${_paymentTypeLabel(billingPayments[i]['type'])} - ${((billingPayments[i]['amount'] as num?) ?? 0).toStringAsFixed(0)} ${billingPayments[i]['currency'] ?? 'KM'} (${_paymentStatusLabel(billingPayments[i]['status'])})',
+                        ),
+                        Text(
+                          _formatIsoDate(billingPayments[i]['createdAt']),
+                          style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
                         ),
                         const SizedBox(height: 6),
                       ],
@@ -1856,6 +2006,12 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: Text('• ${item.title} x${item.quantity} - ${(item.price * item.quantity).toStringAsFixed(0)} KM'),
                           ),
                           IconButton(
+                            onPressed: () => _removeCartItem(item),
+                            icon: const Icon(Icons.delete_outline),
+                            visualDensity: VisualDensity.compact,
+                            tooltip: 'Ukloni artikal',
+                          ),
+                          IconButton(
                             onPressed: () => _changeCartItemQuantity(item, -1),
                             icon: const Icon(Icons.remove_circle_outline),
                             visualDensity: VisualDensity.compact,
@@ -1875,6 +2031,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: const TextStyle(color: Color(0xFF64748B)),
                     ),
                   const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: _clearCart,
+                      icon: const Icon(Icons.delete_sweep_outlined),
+                      label: const Text('Isprazni korpu'),
+                    ),
+                  ),
                 ],
                 SizedBox(
                   width: double.infinity,
