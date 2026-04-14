@@ -47,8 +47,18 @@ public class UserService : IUserService
         var user = await _context.Users.FindAsync(id)
             ?? throw new KeyNotFoundException("Korisnik nije pronađen.");
 
+        var normalizedEmail = dto.Email.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedEmail))
+            throw new InvalidOperationException("Email je obavezan.");
+
+        var emailTaken = await _context.Users
+            .AnyAsync(u => u.Id != id && u.Email == normalizedEmail);
+        if (emailTaken)
+            throw new InvalidOperationException("Email je već zauzet.");
+
         user.FirstName      = dto.FirstName;
         user.LastName       = dto.LastName;
+        user.Email          = normalizedEmail;
         user.PhoneNumber    = dto.PhoneNumber;
         user.DateOfBirth    = dto.DateOfBirth;
         user.CityId         = dto.CityId;

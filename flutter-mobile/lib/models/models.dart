@@ -6,6 +6,8 @@ class AuthResponse {
   final String lastName;
   final String username;
   final String email;
+  final String? phoneNumber;
+  final String? cityName;
   final int role;
   final String token;
 
@@ -15,6 +17,8 @@ class AuthResponse {
     required this.lastName,
     required this.username,
     required this.email,
+    required this.phoneNumber,
+    required this.cityName,
     required this.role,
     required this.token,
   });
@@ -26,6 +30,8 @@ class AuthResponse {
       lastName: j['lastName'],
       username: j['username'],
       email: j['email'],
+      phoneNumber: j['phoneNumber']?.toString(),
+      cityName: j['cityName']?.toString(),
       role: j['role'],
       token: j['token'],
     );

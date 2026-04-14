@@ -31,6 +31,8 @@ class AuthProvider extends ChangeNotifier {
         lastName: data['lastName'] ?? '',
         username: data['username'] ?? '',
         email: data['email'] ?? '',
+        phoneNumber: data['phoneNumber']?.toString(),
+        cityName: data['cityName']?.toString(),
         role: data['role'] ?? 0,
         token: token,
       );
@@ -111,5 +113,60 @@ class AuthProvider extends ChangeNotifier {
     await ApiClient.setToken(null);
     _user = null;
     notifyListeners();
+  }
+
+  Future<void> refreshMe() async {
+    final data = await ApiClient.get('/users/me');
+    final token = ApiClient.currentToken;
+    if (token == null) return;
+
+    _user = AuthResponse(
+      id: data['id'],
+      firstName: data['firstName'] ?? '',
+      lastName: data['lastName'] ?? '',
+      username: data['username'] ?? '',
+      email: data['email'] ?? '',
+      phoneNumber: data['phoneNumber']?.toString(),
+      cityName: data['cityName']?.toString(),
+      role: data['role'] ?? 0,
+      token: token,
+    );
+    notifyListeners();
+  }
+
+  Future<void> updateProfile({
+    required String firstName,
+    required String lastName,
+    required String email,
+    String? phoneNumber,
+  }) async {
+    if (_user == null) {
+      throw ApiException(401, 'Niste prijavljeni.');
+    }
+
+    await ApiClient.put('/users/${_user!.id}', {
+      'firstName': firstName,
+      'lastName': lastName,
+      'email': email,
+      'phoneNumber': phoneNumber,
+      'dateOfBirth': null,
+      'cityId': null,
+      'primaryGymId': null,
+      'profileImageUrl': null,
+    });
+
+    await refreshMe();
+  }
+
+  Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+    required String confirmPassword,
+  }) async {
+    await ApiClient.post('/users/change-password', {
+      'oldPassword': oldPassword,
+      'newPassword': newPassword,
+      'confirmPassword': confirmPassword,
+    });
   }
 }

@@ -687,6 +687,211 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _openEditProfileDialog(AuthProvider auth) async {
+    final user = auth.user;
+    if (user == null) return;
+
+    final formKey = GlobalKey<FormState>();
+    final firstNameCtrl = TextEditingController(text: user.firstName);
+    final lastNameCtrl = TextEditingController(text: user.lastName);
+    final emailCtrl = TextEditingController(text: user.email);
+    final phoneCtrl = TextEditingController(text: user.phoneNumber ?? '');
+    var saving = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Uredi profil'),
+          content: SizedBox(
+            width: 420,
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: firstNameCtrl,
+                    decoration: const InputDecoration(labelText: 'Ime'),
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Ime je obavezno' : null,
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: lastNameCtrl,
+                    decoration: const InputDecoration(labelText: 'Prezime'),
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Prezime je obavezno' : null,
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: emailCtrl,
+                    decoration: const InputDecoration(labelText: 'Email'),
+                    validator: (v) {
+                      final value = (v ?? '').trim();
+                      if (value.isEmpty) return 'Email je obavezan';
+                      if (!value.contains('@')) return 'Email nije validan';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: phoneCtrl,
+                    decoration: const InputDecoration(labelText: 'Telefon (opcionalno)'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx),
+              child: const Text('Odustani'),
+            ),
+            FilledButton.icon(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      if (!formKey.currentState!.validate()) return;
+                      setLocal(() => saving = true);
+                      try {
+                        await auth.updateProfile(
+                          firstName: firstNameCtrl.text.trim(),
+                          lastName: lastNameCtrl.text.trim(),
+                          email: emailCtrl.text.trim(),
+                          phoneNumber: phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
+                        );
+                        if (!mounted || !ctx.mounted) return;
+                        Navigator.of(ctx).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Profil je uspješno ažuriran.'), backgroundColor: Colors.green),
+                        );
+                      } catch (e) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+                        );
+                        if (mounted) setLocal(() => saving = false);
+                      }
+                    },
+              icon: const Icon(Icons.save_outlined),
+              label: const Text('Sačuvaj'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openChangePasswordDialog(AuthProvider auth) async {
+    final formKey = GlobalKey<FormState>();
+    final oldCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    var saving = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Promjena lozinke'),
+          content: SizedBox(
+            width: 420,
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: oldCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Trenutna lozinka'),
+                    validator: (v) => (v == null || v.isEmpty) ? 'Unesite trenutnu lozinku' : null,
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: newCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Nova lozinka'),
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Unesite novu lozinku';
+                      if (v.length < 6) return 'Lozinka mora imati najmanje 6 znakova';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: confirmCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Potvrdite novu lozinku'),
+                    validator: (v) => v != newCtrl.text ? 'Lozinke se ne podudaraju' : null,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx),
+              child: const Text('Odustani'),
+            ),
+            FilledButton.icon(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      if (!formKey.currentState!.validate()) return;
+                      setLocal(() => saving = true);
+                      try {
+                        await auth.changePassword(
+                          oldPassword: oldCtrl.text,
+                          newPassword: newCtrl.text,
+                          confirmPassword: confirmCtrl.text,
+                        );
+                        if (!mounted || !ctx.mounted) return;
+                        Navigator.of(ctx).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Lozinka je uspješno promijenjena.'), backgroundColor: Colors.green),
+                        );
+                      } catch (e) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+                        );
+                        if (mounted) setLocal(() => saving = false);
+                      }
+                    },
+              icon: const Icon(Icons.lock_reset),
+              label: const Text('Promijeni'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmLogout(AuthProvider auth) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Potvrda odjave'),
+        content: const Text('Da li ste sigurni da se želite odjaviti?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Ne'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Da, odjavi me'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    await auth.logout();
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
+  }
+
   String _formatDate(String iso) {
     try {
       final dt = DateTime.parse(iso);
@@ -1849,16 +2054,30 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(child: _ProfileInfoBox(label: 'ADRESA', value: 'Zmaja od Bosne 12')),
+                  Expanded(child: _ProfileInfoBox(label: 'GRAD', value: user?.cityName ?? '-')),
                   const SizedBox(width: 10),
-                  Expanded(child: _ProfileInfoBox(label: 'TELEFON', value: '+387 62 123 456')),
+                  Expanded(child: _ProfileInfoBox(label: 'TELEFON', value: user?.phoneNumber ?? '-')),
                 ],
               ),
               const SizedBox(height: 14),
-              FilledButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.edit),
-                label: const Text('Uredi profil'),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => _openEditProfileDialog(context.read<AuthProvider>()),
+                      icon: const Icon(Icons.edit),
+                      label: const Text('Uredi profil'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openChangePasswordDialog(context.read<AuthProvider>()),
+                      icon: const Icon(Icons.lock_outline),
+                      label: const Text('Lozinka'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -2072,12 +2291,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 10),
         OutlinedButton.icon(
-          onPressed: () async {
-            await context.read<AuthProvider>().logout();
-            if (context.mounted) {
-              Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
-            }
-          },
+          onPressed: () => _confirmLogout(context.read<AuthProvider>()),
           icon: const Icon(Icons.logout),
           label: const Text('Odjava'),
         ),

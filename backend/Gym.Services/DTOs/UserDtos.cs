@@ -45,6 +45,7 @@ public record UserDto(
 public record UpdateUserDto(
     string FirstName,
     string LastName,
+    string Email,
     string? PhoneNumber,
     DateTime? DateOfBirth,
     int? CityId,

@@ -81,6 +81,23 @@ class ApiClient {
     }
   }
 
+  static Future<dynamic> put(String path, Map<String, dynamic> body) async {
+    try {
+      final resp = await http
+          .put(
+            Uri.parse('$kApiBase$path'),
+            headers: _headers,
+            body: jsonEncode(body),
+          )
+          .timeout(_requestTimeout);
+      return _handle(resp);
+    } on TimeoutException {
+      throw ApiException(408, 'Server ne odgovara. Provjerite da li je backend pokrenut.');
+    } on SocketException {
+      throw ApiException(0, 'Nema konekcije sa backendom.');
+    }
+  }
+
   static dynamic _handle(http.Response resp) {
     if (resp.statusCode >= 200 && resp.statusCode < 300) {
       if (resp.body.isEmpty) return null;
