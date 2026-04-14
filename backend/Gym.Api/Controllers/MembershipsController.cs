@@ -63,4 +63,14 @@ public class MembershipsController(IMembershipService membershipService) : Contr
         var result = await membershipService.RenewAsync(dto);
         return result is null ? BadRequest(new { message = "Plan not found." }) : Ok(result);
     }
+
+    [HttpPost("{id:int}/cancel")]
+    public async Task<IActionResult> Cancel(int id)
+    {
+        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
+
+        var result = await membershipService.CancelMembershipAsync(userId, id);
+        return result is null ? NotFound(new { message = "Članarina nije pronađena." }) : Ok(result);
+    }
 }

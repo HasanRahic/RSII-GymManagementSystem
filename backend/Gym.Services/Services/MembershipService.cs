@@ -121,6 +121,29 @@ public class MembershipService : IMembershipService
         return ToMembershipDto(membership);
     }
 
+    public async Task<UserMembershipDto?> CancelMembershipAsync(int userId, int membershipId)
+    {
+        var membership = await _context.UserMemberships
+            .Include(m => m.MembershipPlan)
+            .Include(m => m.Gym)
+            .Include(m => m.User)
+            .FirstOrDefaultAsync(m => m.Id == membershipId && m.UserId == userId);
+
+        if (membership is null)
+        {
+            return null;
+        }
+
+        if (membership.Status != MembershipStatus.Active)
+        {
+            return ToMembershipDto(membership);
+        }
+
+        membership.Status = MembershipStatus.Cancelled;
+        await _context.SaveChangesAsync();
+        return ToMembershipDto(membership);
+    }
+
     private static MembershipPlanDto ToPlanDto(MembershipPlan p) =>
         new(p.Id, p.Name, p.Description, p.DurationDays, p.Price, p.IsActive, p.GymId, p.Gym.Name);
 

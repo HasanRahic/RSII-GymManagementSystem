@@ -53,6 +53,11 @@ class MembershipService {
     });
     return UserMembership.fromJson(data);
   }
+
+  static Future<UserMembership> cancel(int membershipId) async {
+    final data = await ApiClient.post('/memberships/$membershipId/cancel', {});
+    return UserMembership.fromJson(data as Map<String, dynamic>);
+  }
 }
 
 class PaymentService {

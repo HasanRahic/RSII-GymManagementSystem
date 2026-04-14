@@ -11,4 +11,5 @@ public interface IMembershipService
     Task<IEnumerable<UserMembershipDto>> GetUserMembershipsAsync(int userId);
     Task<UserMembershipDto?> GetActiveMembershipAsync(int userId);
     Task<UserMembershipDto> RenewAsync(RenewMembershipDto dto);
+    Task<UserMembershipDto?> CancelMembershipAsync(int userId, int membershipId);
 }

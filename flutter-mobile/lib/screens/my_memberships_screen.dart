@@ -213,6 +213,100 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
     }
   }
 
+  Future<void> _cancelMembership(UserMembership membership) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Otkaži: ${membership.planName}'),
+        content: Text(
+          'Ova akcija će označiti članarinu kao otkazanu. Članarina će ostati vidljiva u historiji.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Zadrži'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: kRed),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Otkaži članarinu'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await MembershipService.cancel(membership.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Članarina ${membership.planName} je otkazana.'),
+          backgroundColor: kGreen,
+        ),
+      );
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString()), backgroundColor: kRed),
+      );
+    }
+  }
+
+  void _showMembershipDetails(UserMembership membership) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(membership.planName),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _detailLine('Teretana', membership.gymName),
+              _detailLine('Status', membership.statusLabel),
+              _detailLine('Početak', _formatDate(membership.startDate)),
+              _detailLine('Kraj', _formatDate(membership.endDate)),
+              _detailLine('Preostalo dana', '${membership.daysRemaining}'),
+              _detailLine('Cijena', '${membership.price.toStringAsFixed(2)} KM'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Zatvori'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailLine(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ),
+          Expanded(child: Text(value)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -358,9 +452,33 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
                                 ),
                               ),
                               const SizedBox(height: 14),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => _showMembershipDetails(m),
+                                      icon: const Icon(Icons.info_outline),
+                                      label: const Text('Detalji'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: m.status == 0 ? () => _cancelMembership(m) : null,
+                                      icon: const Icon(Icons.cancel_outlined),
+                                      label: const Text('Otkaži'),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: kRed,
+                                        side: const BorderSide(color: kRed),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
                               SizedBox(
                                 width: double.infinity,
-                                child: OutlinedButton.icon(
+                                child: FilledButton.icon(
                                   onPressed: () => _renewMembership(m),
                                   icon: const Icon(Icons.refresh),
                                   label: const Text('Obnovi ovu članarinu'),
