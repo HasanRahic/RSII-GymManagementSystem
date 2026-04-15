@@ -169,6 +169,118 @@ class _HomeScreenState extends State<HomeScreen> {
     return '$dd.$mm.$yyyy';
   }
 
+  String _paymentReference(Map<String, dynamic> payment) {
+    final id = payment['paymentId'] ?? payment['id'];
+    return '#$id';
+  }
+  Widget _detailLine(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ),
+          Expanded(child: Text(value)),
+        ],
+      ),
+    );
+  }
+
+  void _showPaymentDetails(Map<String, dynamic> payment) {
+    final amount = ((payment['amount'] as num?) ?? 0).toDouble();
+    final currency = (payment['currency'] ?? 'KM').toString();
+    final type = _paymentTypeLabel(payment['type']);
+    final status = _paymentStatusLabel(payment['status']);
+    final createdAt = _formatIsoDate(payment['createdAt']);
+    final completedAt = _formatIsoDate(payment['completedAt']);
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Detalji ${_paymentReference(payment)}'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _detailLine('Vrsta', type),
+              _detailLine('Status', status),
+              _detailLine('Iznos', '${amount.toStringAsFixed(0)} $currency'),
+              _detailLine('Kreirano', createdAt),
+              _detailLine('Završeno', completedAt),
+              _detailLine('ID', _paymentReference(payment)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Zatvori'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAllPaymentsDialog(List<Map<String, dynamic>> payments) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sve transakcije'),
+        content: SizedBox(
+          width: 560,
+          height: 420,
+          child: payments.isEmpty
+              ? const Center(child: Text('Nema transakcija za prikaz.'))
+              : ListView.separated(
+                  itemCount: payments.length,
+                  separatorBuilder: (context, _) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final payment = payments[index];
+                    return InkWell(
+                      onTap: () => _showPaymentDetails(payment),
+                      borderRadius: BorderRadius.circular(16),
+                      child: _HistoryCard(
+                        title: '${_paymentReference(payment)} ${_paymentTypeLabel(payment['type'])}',
+                        value: '${((payment['amount'] as num?) ?? 0).toStringAsFixed(0)} ${payment['currency'] ?? 'KM'}',
+                        date: '${_formatIsoDate(payment['createdAt'])} · ${_paymentStatusLabel(payment['status'])}',
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Zatvori'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _paymentHistoryRow(Map<String, dynamic> payment) {
+    return InkWell(
+      onTap: () => _showPaymentDetails(payment),
+      borderRadius: BorderRadius.circular(16),
+      child: _HistoryCard(
+        title: '${_paymentReference(payment)} ${_paymentTypeLabel(payment['type'])}',
+        value: '${((payment['amount'] as num?) ?? 0).toStringAsFixed(0)} ${payment['currency'] ?? 'KM'}',
+        date: '${_formatIsoDate(payment['createdAt'])} · ${_paymentStatusLabel(payment['status'])}',
+      ),
+    );
+  }
+
   Future<void> _syncCheckInState() async {
     try {
       final history = await CheckInService.getMyHistory();
@@ -2133,10 +2245,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ] else if (_profileSection == 'Billing') ...[
           _ProfileMetricGrid(
             items: [
-              _MetricItem(label: 'Ukupno uplata', value: '${_recentPayments.length}'),
+              _MetricItem(label: 'Ukupno uplata', value: '${_billingPayments.length}'),
               _MetricItem(
                 label: 'Ukupno plaćeno',
-                value: '${_recentPayments
+                value: '${_billingPayments
                         .where((p) {
                           final s = '${p['status']}'.toLowerCase();
                           return p['status'] == 1 || s == 'succeeded';
@@ -2145,7 +2257,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         .toStringAsFixed(0)} KM',
               ),
               _MetricItem(label: 'Aktivna članarina', value: _activeMembership == null ? 'Ne' : 'Da'),
-              _MetricItem(label: 'U obradi', value: '${_recentPayments.where((p) {
+              _MetricItem(label: 'U obradi', value: '${_billingPayments.where((p) {
                 final s = '${p['status']}'.toLowerCase();
                 return p['status'] == 0 || s == 'pending';
               }).length}'),
@@ -2189,15 +2301,25 @@ class _HomeScreenState extends State<HomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       for (var i = 0; i < billingPayments.length && i < 3; i++) ...[
-                        Text(
-                          '• #${billingPayments[i]['paymentId']} ${_paymentTypeLabel(billingPayments[i]['type'])} - ${((billingPayments[i]['amount'] as num?) ?? 0).toStringAsFixed(0)} ${billingPayments[i]['currency'] ?? 'KM'} (${_paymentStatusLabel(billingPayments[i]['status'])})',
-                        ),
-                        Text(
-                          _formatIsoDate(billingPayments[i]['createdAt']),
-                          style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
-                        ),
-                        const SizedBox(height: 6),
+                        _paymentHistoryRow(billingPayments[i]),
+                        const SizedBox(height: 8),
                       ],
+                      if (billingPayments.length > 3)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () => _showAllPaymentsDialog(billingPayments),
+                            child: const Text('Prikaži sve transakcije'),
+                          ),
+                        ),
+                      if (billingPayments.length <= 3)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: billingPayments.isEmpty ? null : () => _showAllPaymentsDialog(billingPayments),
+                            child: const Text('Prikaži sve transakcije'),
+                          ),
+                        ),
                     ],
                   ),
           ),
