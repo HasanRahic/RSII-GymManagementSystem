@@ -169,6 +169,119 @@ class _HomeScreenState extends State<HomeScreen> {
     return '$dd.$mm.$yyyy';
   }
 
+  Widget _skeletonBox({double height = 16, double width = double.infinity, double radius = 12}) {
+    return Container(
+      height: height,
+      width: width,
+      decoration: BoxDecoration(
+        color: const Color(0xFFE9EEF7),
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
+
+  Widget _buildLoadingSkeleton() {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        _TopCard(
+          title: 'Učitavanje...',
+          subtitle: 'Pripremamo sadržaj za prikaz',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _skeletonBox(height: 18, width: 160),
+              const SizedBox(height: 10),
+              _skeletonBox(height: 14, width: 220),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(child: _skeletonBox(height: 72)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _skeletonBox(height: 72)),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(child: _skeletonBox(height: 72)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _skeletonBox(height: 72)),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _TopCard(
+          title: 'Predlozi',
+          subtitle: 'Katalog i članarine se učitavaju',
+          child: Column(
+            children: [
+              _skeletonBox(height: 18, width: 180),
+              const SizedBox(height: 12),
+              _skeletonBox(height: 68),
+              const SizedBox(height: 10),
+              _skeletonBox(height: 68),
+              const SizedBox(height: 10),
+              _skeletonBox(height: 68),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _emptyStateCard({
+    required String title,
+    required String message,
+    required IconData icon,
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5ECF6)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F6FC),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, size: 28, color: const Color(0xFF657BE6)),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Color(0xFF64748B)),
+          ),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: 14),
+            FilledButton(
+              onPressed: onAction,
+              child: Text(actionLabel),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   String _paymentReference(Map<String, dynamic> payment) {
     final id = payment['paymentId'] ?? payment['id'];
     return '#$id';
@@ -1086,13 +1199,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildTabContent(BuildContext context, AuthResponse? user) {
     if ((_loadingMembership || _loadingCatalog) && _selectedIndex != 3) {
-      return ListView(
-        physics: AlwaysScrollableScrollPhysics(),
-        children: const [
-          SizedBox(height: 180),
-          Center(child: CircularProgressIndicator()),
-        ],
-      );
+      return _buildLoadingSkeleton();
     }
 
     switch (_selectedIndex) {
@@ -2225,12 +2332,25 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 12),
         if (_profileSection == 'Historija') ...[
           if (_loadingPayments)
-            const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()))
-          else if (_recentPayments.isEmpty)
             const _TopCard(
               title: 'Historija',
+              subtitle: 'Učitavanje plaćanja',
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            )
+          else if (_recentPayments.isEmpty)
+            _TopCard(
+              title: 'Historija',
               subtitle: 'Nema evidentiranih plaćanja',
-              child: Text('Kada obavite uplatu, pojavit će se ovdje.'),
+              child: _emptyStateCard(
+                title: 'Još nema plaćanja',
+                message: 'Kada obavite uplatu ili kupovinu članarine, ovdje će se pojaviti historija.',
+                icon: Icons.receipt_long_outlined,
+                actionLabel: 'Pregledaj billing',
+                onAction: () => setState(() => _profileSection = 'Billing'),
+              ),
             )
           else ...[
             for (var i = 0; i < _recentPayments.length && i < 5; i++) ...[
@@ -2393,13 +2513,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ] else ...[
-          _ProfileMetricGrid(
-            items: const [
-              _MetricItem(label: 'Prvi mjesec', value: 'Dobrodošao!'),
-              _MetricItem(label: '3 zaredom', value: 'Streber'),
-              _MetricItem(label: '50 treninga', value: 'Odlično!'),
-              _MetricItem(label: 'VIP član', value: 'Zaključano'),
-            ],
+          _emptyStateCard(
+            title: 'Badges uskoro stižu',
+            message: 'Ovaj dio je trenutno rezervisan za bedževe i napredak. Sljedeći korak je dodavanje pravog progress tracking-a.',
+            icon: Icons.emoji_events_outlined,
           ),
         ],
         const SizedBox(height: 14),

@@ -46,6 +46,60 @@ class _CheckInHistoryScreenState extends State<CheckInHistoryScreen> {
     }
   }
 
+  Widget _skeletonRow() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5ECF6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(height: 16, width: 180, decoration: BoxDecoration(color: const Color(0xFFE9EEF7), borderRadius: BorderRadius.circular(999))),
+          const SizedBox(height: 12),
+          Container(height: 12, width: 120, decoration: BoxDecoration(color: const Color(0xFFE9EEF7), borderRadius: BorderRadius.circular(999))),
+          const SizedBox(height: 16),
+          Container(height: 14, width: 90, decoration: BoxDecoration(color: const Color(0xFFE9EEF7), borderRadius: BorderRadius.circular(999))),
+        ],
+      ),
+    );
+  }
+
+  Widget _emptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3F6FC),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(Icons.event_busy_outlined, size: 32, color: Color(0xFF657BE6)),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Nema dolazaka',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Kada napravite check-in, historija će se ovdje automatski pojaviti.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Color(0xFF64748B)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -56,9 +110,16 @@ class _CheckInHistoryScreenState extends State<CheckInHistoryScreen> {
         foregroundColor: Colors.black,
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                _skeletonRow(),
+                _skeletonRow(),
+                _skeletonRow(),
+              ],
+            )
           : _history.isEmpty
-              ? const Center(child: Text('Nema dolazaka'))
+              ? _emptyState()
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView.builder(
