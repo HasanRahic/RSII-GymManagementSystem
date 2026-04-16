@@ -28,15 +28,27 @@ class _HomeScreenState extends State<HomeScreen> {
   int? _activeCheckInId;
   bool _checkInBusy = false;
   final TextEditingController _gymSearchCtrl = TextEditingController();
+  final TextEditingController _shopSearchCtrl = TextEditingController();
   bool _showTrainers = false;
   String _selectedCity = 'Svi gradovi';
   String? _selectedTrainingType;
+  String _selectedShopCategory = 'Sve';
   List<GymModel> _gyms = [];
   List<MembershipPlanModel> _plans = [];
   List<TrainingSessionModel> _sessions = [];
   List<String> _cities = ['Svi gradovi'];
   List<String> _trainingTypes = [];
   final List<_ShopCartItem> _shopCart = [];
+  final List<_ShopProduct> _shopProducts = const [
+    _ShopProduct(title: 'Whey Protein', price: 89, emoji: '🥤', category: 'Suplementi'),
+    _ShopProduct(title: 'Creatine Monohydrate', price: 49, emoji: '⚗️', category: 'Suplementi'),
+    _ShopProduct(title: 'BCAA Recovery', price: 39, emoji: '💧', category: 'Suplementi'),
+    _ShopProduct(title: 'FitTrack Majica', price: 35, emoji: '👕', category: 'Odjeća'),
+    _ShopProduct(title: 'Gym Shorts', price: 42, emoji: '🩳', category: 'Odjeća'),
+    _ShopProduct(title: 'Muške Rukavice', price: 29, emoji: '🧤', category: 'Oprema'),
+    _ShopProduct(title: 'Shaker 700ml', price: 15, emoji: '🧋', category: 'Oprema'),
+    _ShopProduct(title: 'Yoga Prostirka', price: 55, emoji: '🧘', category: 'Oprema'),
+  ];
   List<Map<String, dynamic>> _recentPayments = [];
   bool _loadingPayments = true;
   String _billingTypeFilter = 'Sve';
@@ -54,6 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _gymSearchCtrl.dispose();
+    _shopSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -510,6 +523,22 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     return filtered;
+  }
+
+  List<String> get _shopCategories {
+    final categories = _shopProducts.map((p) => p.category).toSet().toList()..sort();
+    return ['Sve', ...categories];
+  }
+
+  List<_ShopProduct> get _filteredShopProducts {
+    final query = _shopSearchCtrl.text.trim().toLowerCase();
+    return _shopProducts.where((product) {
+      final categoryMatches = _selectedShopCategory == 'Sve' || product.category == _selectedShopCategory;
+      final queryMatches = query.isEmpty ||
+          product.title.toLowerCase().contains(query) ||
+          product.category.toLowerCase().contains(query);
+      return categoryMatches && queryMatches;
+    }).toList();
   }
 
   Future<bool> _launchStripeCheckout(String sessionUrl) async {
@@ -1622,27 +1651,76 @@ class _HomeScreenState extends State<HomeScreen> {
 
         const _SectionTitle(icon: '🛒', title: 'Shop'),
         const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _OfferCard(
-                emoji: '🥤',
-                title: 'Whey Protein',
-                price: '89 KM',
-                onBuy: () => _addShopItemToCart('Whey Protein', 89),
-              ),
+        TextField(
+          controller: _shopSearchCtrl,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            hintText: 'Pretraži artikle (npr. protein, oprema, majica)...',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: _shopSearchCtrl.text.isEmpty
+                ? null
+                : IconButton(
+                    onPressed: () {
+                      _shopSearchCtrl.clear();
+                      setState(() {});
+                    },
+                    icon: const Icon(Icons.clear),
+                  ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _OfferCard(
-                emoji: '👕',
-                title: 'FitTrack Majica',
-                price: '35 KM',
-                onBuy: () => _addShopItemToCart('FitTrack Majica', 35),
-              ),
-            ),
-          ],
+          ),
         ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _shopCategories
+              .map(
+                (category) => ChoiceChip(
+                  label: Text(category),
+                  selected: _selectedShopCategory == category,
+                  onSelected: (_) => setState(() => _selectedShopCategory = category),
+                ),
+              )
+              .toList(),
+        ),
+        const SizedBox(height: 12),
+        if (_filteredShopProducts.isEmpty)
+          _emptyStateCard(
+            title: 'Nema artikala',
+            message: 'Nismo pronašli artikle za odabranu kategoriju ili upit pretrage.',
+            icon: Icons.inventory_2_outlined,
+            actionLabel: 'Resetuj filtere',
+            onAction: () {
+              setState(() {
+                _selectedShopCategory = 'Sve';
+                _shopSearchCtrl.clear();
+              });
+            },
+          )
+        else
+          GridView.builder(
+            itemCount: _filteredShopProducts.length,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 0.74,
+            ),
+            itemBuilder: (context, index) {
+              final product = _filteredShopProducts[index];
+              return _OfferCard(
+                emoji: product.emoji,
+                title: product.title,
+                price: '${product.price.toStringAsFixed(0)} KM',
+                subtitle: product.category,
+                onBuy: () => _addShopItemToCart(product.title, product.price),
+              );
+            },
+          ),
         if (_shopCart.isNotEmpty) ...[
           const SizedBox(height: 8),
           Align(
@@ -2807,12 +2885,14 @@ class _OfferCard extends StatelessWidget {
   final String emoji;
   final String title;
   final String price;
+  final String? subtitle;
   final VoidCallback onBuy;
 
   const _OfferCard({
     required this.emoji,
     required this.title,
     required this.price,
+    this.subtitle,
     required this.onBuy,
   });
 
@@ -2849,6 +2929,17 @@ class _OfferCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 2),
+          if (subtitle != null) ...[
+            Text(
+              subtitle!,
+              style: const TextStyle(
+                color: Color(0xFF8A94A8),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 2),
+          ],
           Text(
             price,
             style: const TextStyle(
@@ -2942,6 +3033,20 @@ class _ShopCartItem {
   final int quantity;
 
   const _ShopCartItem({required this.title, required this.price, this.quantity = 1});
+}
+
+class _ShopProduct {
+  final String title;
+  final double price;
+  final String emoji;
+  final String category;
+
+  const _ShopProduct({
+    required this.title,
+    required this.price,
+    required this.emoji,
+    required this.category,
+  });
 }
 
 class _GroupTrainingTile extends StatelessWidget {
