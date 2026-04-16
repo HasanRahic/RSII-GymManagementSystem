@@ -51,6 +51,9 @@ class _HomeScreenState extends State<HomeScreen> {
   ];
   List<Map<String, dynamic>> _recentPayments = [];
   bool _loadingPayments = true;
+  bool _loadingReservations = true;
+  final Set<int> _reservedSessionIds = <int>{};
+  final Set<int> _reservationBusyIds = <int>{};
   String _billingTypeFilter = 'Sve';
   bool _billingSortNewestFirst = true;
 
@@ -61,6 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadCatalog();
     _syncCheckInState();
     _loadPayments();
+    _loadReservations();
   }
 
   @override
@@ -138,6 +142,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadCatalog(),
       _syncCheckInState(),
       _loadPayments(),
+      _loadReservations(),
     ]);
   }
 
@@ -152,6 +157,101 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _recentPayments = []);
     } finally {
       if (mounted) setState(() => _loadingPayments = false);
+    }
+  }
+
+  Future<void> _loadReservations() async {
+    setState(() => _loadingReservations = true);
+    try {
+      final reservations = await TrainingSessionService.getMyReservations();
+      if (!mounted) return;
+      setState(() {
+        _reservedSessionIds
+          ..clear()
+          ..addAll(reservations.map((s) => s.id));
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _reservedSessionIds.clear());
+    } finally {
+      if (mounted) setState(() => _loadingReservations = false);
+    }
+  }
+
+  DateTime _sessionStartAt(TrainingSessionModel session) {
+    final merged = DateTime.tryParse('${session.date}T${session.startTime}');
+    if (merged != null) return merged;
+
+    final dateOnly = DateTime.tryParse(session.date);
+    if (dateOnly != null) return dateOnly;
+
+    return DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  List<TrainingSessionModel> get _reservedSessions {
+    final items = _sessions.where((s) => _reservedSessionIds.contains(s.id)).toList();
+    items.sort((a, b) => _sessionStartAt(a).compareTo(_sessionStartAt(b)));
+    return items;
+  }
+
+  Future<void> _toggleSessionReservation(TrainingSessionModel session) async {
+    if (_reservationBusyIds.contains(session.id)) return;
+
+    setState(() => _reservationBusyIds.add(session.id));
+
+    try {
+      if (_reservedSessionIds.contains(session.id)) {
+        await TrainingSessionService.cancelReservation(session.id);
+        if (!mounted) return;
+        setState(() {
+          _reservedSessionIds.remove(session.id);
+          _sessions = _sessions
+              .map((s) => s.id == session.id
+                  ? TrainingSessionModel(
+                      id: s.id,
+                      title: s.title,
+                      description: s.description,
+                      type: s.type,
+                      date: s.date,
+                      startTime: s.startTime,
+                      endTime: s.endTime,
+                      maxParticipants: s.maxParticipants,
+                      currentParticipants: (s.currentParticipants - 1).clamp(0, s.maxParticipants),
+                      price: s.price,
+                      isActive: s.isActive,
+                      trainerId: s.trainerId,
+                      trainerFullName: s.trainerFullName,
+                      gymId: s.gymId,
+                      gymName: s.gymName,
+                      trainingTypeId: s.trainingTypeId,
+                      trainingTypeName: s.trainingTypeName,
+                    )
+                  : s)
+              .toList();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Rezervacija za "${session.title}" je otkazana.')),
+        );
+      } else {
+        final reserved = await TrainingSessionService.reserve(session.id);
+        if (!mounted) return;
+        setState(() {
+          _reservedSessionIds.add(session.id);
+          _sessions = _sessions.map((s) => s.id == session.id ? reserved : s).toList();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Uspješno ste rezervisali "${session.title}".')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Rezervacija nije uspjela: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _reservationBusyIds.remove(session.id));
+      }
     }
   }
 
@@ -1774,6 +1874,10 @@ class _HomeScreenState extends State<HomeScreen> {
               child: _GroupTrainingTile(
                 title: session.title,
                 schedule: '${session.date.substring(0, 10)} · ${prettyTime(session.startTime)} - ${prettyTime(session.endTime)}',
+                spotsLabel: 'Slobodno ${((session.maxParticipants - session.currentParticipants).clamp(0, session.maxParticipants))}/${session.maxParticipants}',
+                isReserved: _reservedSessionIds.contains(session.id),
+                isBusy: _reservationBusyIds.contains(session.id),
+                onReserveToggle: () => _toggleSessionReservation(session),
               ),
             ),
           ),
@@ -2221,6 +2325,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildProgressTab() {
     final daysRemaining = _activeMembership?.daysRemaining ?? 0;
+    final reservedSessions = _reservedSessions;
+    String shortDate(String value) => value.length >= 10 ? value.substring(0, 10) : value;
+    String shortTime(String value) => value.length >= 5 ? value.substring(0, 5) : value;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -2260,11 +2367,27 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 14),
         const _SectionTitle(icon: '🏋️', title: 'Nadolazeći treninzi'),
         const SizedBox(height: 10),
-        const _ScheduleCard(title: 'Grupni trening - HIIT', schedule: 'Pon, Sri, Pet · 18:00 - 19:00', tag: 'GRUPNI'),
-        const SizedBox(height: 10),
-        const _ScheduleCard(title: 'Trening prsa i tricepsa', schedule: 'Ponedjeljak · 17:00 - 19:00', tag: 'LIČNI'),
-        const SizedBox(height: 10),
-        const _ScheduleCard(title: 'Leđa i core', schedule: 'Utorak · 19:00 - 20:00', tag: 'LIČNI'),
+        if (_loadingReservations)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (reservedSessions.isEmpty)
+          const Text(
+            'Nemate rezervisanih treninga. Rezervišite termin iz sekcije Grupni treninzi na početnoj.',
+            style: TextStyle(color: Color(0xFF8A94A8)),
+          )
+        else
+          ...reservedSessions.take(5).map(
+            (session) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _ScheduleCard(
+                title: session.title,
+                schedule: '${shortDate(session.date)} · ${shortTime(session.startTime)} - ${shortTime(session.endTime)} · ${session.gymName}',
+                tag: session.isGroup ? 'GRUPNI' : 'LIČNI',
+              ),
+            ),
+          ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: () => Navigator.push(
@@ -2899,7 +3022,7 @@ class _OfferCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -2909,7 +3032,7 @@ class _OfferCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            height: 92,
+            height: 78,
             width: double.infinity,
             alignment: Alignment.center,
             decoration: BoxDecoration(
@@ -2918,7 +3041,7 @@ class _OfferCard extends StatelessWidget {
             ),
             child: Text(emoji, style: const TextStyle(fontSize: 28)),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
             title,
             maxLines: 1,
@@ -2938,8 +3061,9 @@ class _OfferCard extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 1),
           ],
+          const Spacer(),
           Text(
             price,
             style: const TextStyle(
@@ -2948,10 +3072,15 @@ class _OfferCard extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           SizedBox(
             width: double.infinity,
             child: FilledButton.tonal(
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 34),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                padding: const EdgeInsets.symmetric(vertical: 6),
+              ),
               onPressed: onBuy,
               child: const Text('Dodaj u korpu'),
             ),
@@ -3052,10 +3181,18 @@ class _ShopProduct {
 class _GroupTrainingTile extends StatelessWidget {
   final String title;
   final String schedule;
+  final String spotsLabel;
+  final bool isReserved;
+  final bool isBusy;
+  final VoidCallback onReserveToggle;
 
   const _GroupTrainingTile({
     required this.title,
     required this.schedule,
+    required this.spotsLabel,
+    required this.isReserved,
+    required this.isBusy,
+    required this.onReserveToggle,
   });
 
   @override
@@ -3089,16 +3226,31 @@ class _GroupTrainingTile extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                const SizedBox(height: 2),
+                Text(
+                  spotsLabel,
+                  style: TextStyle(
+                    color: isReserved ? const Color(0xFF2DBB72) : const Color(0xFF8A94A8),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
               ],
             ),
           ),
           FilledButton(
-            onPressed: () {},
+            onPressed: isBusy ? null : onReserveToggle,
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF5D72E6),
+              backgroundColor: isReserved ? const Color(0xFFEF4444) : const Color(0xFF5D72E6),
               foregroundColor: Colors.white,
             ),
-            child: const Text('Rezerviši'),
+            child: isBusy
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : Text(isReserved ? 'Otkaži' : 'Rezerviši'),
           ),
         ],
       ),

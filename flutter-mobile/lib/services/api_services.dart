@@ -107,6 +107,20 @@ class TrainingSessionService {
     final data = await ApiClient.get('/training-sessions$suffix') as List;
     return data.map((e) => TrainingSessionModel.fromJson(e)).toList();
   }
+
+  static Future<TrainingSessionModel> reserve(int sessionId) async {
+    final data = await ApiClient.post('/training-sessions/$sessionId/reserve', {});
+    return TrainingSessionModel.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<void> cancelReservation(int sessionId) async {
+    await ApiClient.delete('/training-sessions/$sessionId/reserve');
+  }
+
+  static Future<List<TrainingSessionModel>> getMyReservations() async {
+    final data = await ApiClient.get('/training-sessions/my-reservations') as List;
+    return data.map((e) => TrainingSessionModel.fromJson(e)).toList();
+  }
 }
 
 class ReferenceService {
