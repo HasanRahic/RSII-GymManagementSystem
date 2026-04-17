@@ -116,20 +116,21 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
 
   Future<bool> _launchStripeCheckout(String sessionUrl) async {
     if (!mounted) return false;
-    await Navigator.push(
+    final launched = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => StripeCheckoutScreen(checkoutUrl: sessionUrl),
       ),
     );
-    return true;
+    return launched ?? false;
   }
 
   Future<void> _trackPaymentStatus(int paymentId) async {
     if (paymentId <= 0) return;
 
-    for (var i = 0; i < 12; i++) {
-      await Future.delayed(const Duration(seconds: 5));
+    const pollInterval = Duration(seconds: 7);
+    for (var i = 0; i < 8; i++) {
+      await Future.delayed(pollInterval);
       if (!mounted) return;
 
       try {

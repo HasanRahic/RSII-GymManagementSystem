@@ -21,6 +21,8 @@ class _HomeScreenState extends State<HomeScreen> {
   UserMembership? _activeMembership;
   bool _loadingMembership = true;
   bool _loadingCatalog = true;
+  bool _loadingTrainingData = false;
+  bool _trainingDataLoaded = false;
   int _selectedIndex = 0;
   String _profileSection = 'Historija';
   int _membersInGym = 12;
@@ -63,8 +65,15 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadMembership();
     _loadCatalog();
     _syncCheckInState();
-    _loadPayments();
-    _loadReservations();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_selectedIndex == 0) {
+        _ensureTrainingDataLoaded();
+      }
+      if (_selectedIndex == 3) {
+        _ensureProfileDataLoaded();
+      }
+    });
   }
 
   @override
@@ -100,40 +109,71 @@ class _HomeScreenState extends State<HomeScreen> {
       final results = await Future.wait([
         GymService.getAll(),
         MembershipService.getPlans(),
-        TrainingSessionService.getAll(),
-        ReferenceService.getCities(),
-        ReferenceService.getTrainingTypes(),
       ]);
 
       final gyms = results[0] as List<GymModel>;
       final plans = results[1] as List<MembershipPlanModel>;
-      final sessions = results[2] as List<TrainingSessionModel>;
-      final cities = results[3] as List<CityModel>;
-      final trainingTypes = results[4] as List<TrainingTypeModel>;
 
       if (!mounted) return;
       setState(() {
         _gyms = gyms;
         _plans = plans;
-        _sessions = sessions;
-        _cities = ['Svi gradovi', ...cities.map((c) => c.name).toSet()];
-        _trainingTypes = trainingTypes.map((t) => t.name).toList();
-        if (!_cities.contains(_selectedCity)) {
-          _selectedCity = 'Svi gradovi';
-        }
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _gyms = [];
         _plans = [];
-        _sessions = [];
-        _cities = ['Svi gradovi'];
-        _trainingTypes = [];
       });
     } finally {
       if (mounted) setState(() => _loadingCatalog = false);
     }
+  }
+
+  Future<void> _loadTrainingData() async {
+    if (_loadingTrainingData || _trainingDataLoaded) return;
+
+    setState(() => _loadingTrainingData = true);
+    try {
+      final results = await Future.wait([
+        TrainingSessionService.getAll(),
+        ReferenceService.getCities(),
+        ReferenceService.getTrainingTypes(),
+      ]);
+
+      final sessions = results[0] as List<TrainingSessionModel>;
+      final cities = results[1] as List<CityModel>;
+      final trainingTypes = results[2] as List<TrainingTypeModel>;
+
+      if (!mounted) return;
+      setState(() {
+        _sessions = sessions;
+        _cities = ['Svi gradovi', ...cities.map((c) => c.name).toSet()];
+        _trainingTypes = trainingTypes.map((t) => t.name).toList();
+        if (!_cities.contains(_selectedCity)) {
+          _selectedCity = 'Svi gradovi';
+        }
+        _trainingDataLoaded = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _sessions = [];
+        _cities = ['Svi gradovi'];
+        _trainingTypes = [];
+        _trainingDataLoaded = true;
+      });
+    } finally {
+      if (mounted) setState(() => _loadingTrainingData = false);
+    }
+  }
+
+  Future<void> _ensureTrainingDataLoaded({bool forceReload = false}) async {
+    if (forceReload) {
+      _trainingDataLoaded = false;
+    }
+
+    await _loadTrainingData();
   }
 
   Future<void> _refreshAll() async {
@@ -141,9 +181,25 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadMembership(),
       _loadCatalog(),
       _syncCheckInState(),
-      _loadPayments(),
-      _loadReservations(),
     ]);
+
+    if (_selectedIndex == 0 || _selectedIndex == 1 || _selectedIndex == 2) {
+      await _ensureTrainingDataLoaded(forceReload: true);
+    }
+
+    if (_selectedIndex == 3) {
+      await _ensureProfileDataLoaded(forceReload: true);
+    }
+  }
+
+  Future<void> _ensureProfileDataLoaded({bool forceReload = false}) async {
+    if (forceReload || _recentPayments.isEmpty) {
+      await _loadPayments();
+    }
+
+    if (forceReload || _reservedSessionIds.isEmpty) {
+      await _loadReservations();
+    }
   }
 
   Future<void> _loadPayments() async {
@@ -643,13 +699,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<bool> _launchStripeCheckout(String sessionUrl) async {
     if (!mounted) return false;
-    await Navigator.push(
+    final launched = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => StripeCheckoutScreen(checkoutUrl: sessionUrl),
       ),
     );
-    return true;
+    return launched ?? false;
   }
 
   Future<void> _addShopItemToCart(String title, double price) async {
@@ -913,8 +969,9 @@ class _HomeScreenState extends State<HomeScreen> {
   ) async {
     if (paymentId <= 0) return;
 
-    for (var i = 0; i < 12; i++) {
-      await Future.delayed(const Duration(seconds: 5));
+    const pollInterval = Duration(seconds: 7);
+    for (var i = 0; i < 8; i++) {
+      await Future.delayed(pollInterval);
       if (!mounted) return;
 
       try {
@@ -1315,7 +1372,15 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         backgroundColor: Colors.white,
-        onDestinationSelected: (index) => setState(() => _selectedIndex = index),
+        onDestinationSelected: (index) {
+          setState(() => _selectedIndex = index);
+          if (index == 0 || index == 1 || index == 2) {
+            _ensureTrainingDataLoaded();
+          }
+          if (index == 3) {
+            _ensureProfileDataLoaded();
+          }
+        },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Početna'),
           NavigationDestination(icon: Icon(Icons.apartment_outlined), selectedIcon: Icon(Icons.apartment), label: 'Teretane'),
@@ -1865,7 +1930,12 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 18),
         const _SectionTitle(icon: '🏋️', title: 'Grupni treninzi'),
         const SizedBox(height: 10),
-        if (groupSessions.isEmpty)
+        if (_loadingTrainingData && !_trainingDataLoaded)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (groupSessions.isEmpty)
           const Text('Trenutno nema grupnih treninga.', style: TextStyle(color: Color(0xFF8A94A8)))
         else
           ...groupSessions.map(
@@ -1991,6 +2061,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildGymsTab() {
+    if (_loadingTrainingData && !_trainingDataLoaded) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     final search = _gymSearchCtrl.text.trim().toLowerCase();
     final selectedCity = _selectedCity;
     final selectedType = _selectedTrainingType?.trim().toLowerCase();
@@ -2324,6 +2398,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildProgressTab() {
+    if (_loadingTrainingData && !_trainingDataLoaded) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     final daysRemaining = _activeMembership?.daysRemaining ?? 0;
     final reservedSessions = _reservedSessions;
     String shortDate(String value) => value.length >= 10 ? value.substring(0, 10) : value;
