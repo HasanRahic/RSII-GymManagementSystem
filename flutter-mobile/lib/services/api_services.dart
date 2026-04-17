@@ -1,5 +1,8 @@
 import '../core/api_client.dart';
 import '../models/models.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+enum PaymentFinalStatus { succeeded, failed, pending }
 
 class GymService {
   static Future<List<GymModel>> getAll({String? search, String? city, String? status}) async {
@@ -61,6 +64,8 @@ class MembershipService {
 }
 
 class PaymentService {
+  static const _pendingPaymentsKey = 'pending_payment_ids';
+
   static Future<List<Map<String, dynamic>>> getMyPayments({int take = 20}) async {
     final data = await ApiClient.get('/payments/my?take=$take') as List;
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
@@ -93,6 +98,61 @@ class PaymentService {
   static Future<Map<String, dynamic>> getPaymentStatus(int paymentId) async {
     final data = await ApiClient.get('/payments/$paymentId/status');
     return Map<String, dynamic>.from(data as Map);
+  }
+
+  static PaymentFinalStatus parseFinalStatus(dynamic rawStatus) {
+    final status = '$rawStatus'.toLowerCase();
+    if (rawStatus == 1 || status == 'succeeded') return PaymentFinalStatus.succeeded;
+    if (rawStatus == 2 || status == 'failed') return PaymentFinalStatus.failed;
+    return PaymentFinalStatus.pending;
+  }
+
+  static Future<PaymentFinalStatus> waitForFinalStatus(
+    int paymentId, {
+    int attempts = 8,
+    Duration interval = const Duration(seconds: 7),
+  }) async {
+    if (paymentId <= 0) return PaymentFinalStatus.pending;
+
+    for (var i = 0; i < attempts; i++) {
+      await Future.delayed(interval);
+      try {
+        final result = await getPaymentStatus(paymentId);
+        final finalStatus = parseFinalStatus(result['status']);
+        if (finalStatus != PaymentFinalStatus.pending) {
+          return finalStatus;
+        }
+      } catch (_) {
+        // Ignore transient errors and continue polling.
+      }
+    }
+
+    return PaymentFinalStatus.pending;
+  }
+
+  static Future<List<int>> getPendingPaymentIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList(_pendingPaymentsKey) ?? const <String>[];
+    return raw.map(int.tryParse).whereType<int>().toList();
+  }
+
+  static Future<void> markPendingPayment(int paymentId) async {
+    if (paymentId <= 0) return;
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getStringList(_pendingPaymentsKey) ?? <String>[];
+    final value = paymentId.toString();
+    if (!existing.contains(value)) {
+      existing.add(value);
+      await prefs.setStringList(_pendingPaymentsKey, existing);
+    }
+  }
+
+  static Future<void> clearPendingPayment(int paymentId) async {
+    if (paymentId <= 0) return;
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getStringList(_pendingPaymentsKey) ?? <String>[];
+    existing.remove(paymentId.toString());
+    await prefs.setStringList(_pendingPaymentsKey, existing);
   }
 }
 

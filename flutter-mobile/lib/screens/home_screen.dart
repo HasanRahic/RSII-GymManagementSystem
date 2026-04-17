@@ -73,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_selectedIndex == 3) {
         _ensureProfileDataLoaded();
       }
+      _resumePendingPayments();
     });
   }
 
@@ -213,6 +214,37 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _recentPayments = []);
     } finally {
       if (mounted) setState(() => _loadingPayments = false);
+    }
+  }
+
+  Future<void> _resumePendingPayments() async {
+    final pendingIds = await PaymentService.getPendingPaymentIds();
+    if (!mounted || pendingIds.isEmpty) return;
+
+    var confirmed = 0;
+    var failed = 0;
+
+    for (final paymentId in pendingIds.take(5)) {
+      try {
+        final result = await PaymentService.getPaymentStatus(paymentId);
+        final status = PaymentService.parseFinalStatus(result['status']);
+        if (status == PaymentFinalStatus.succeeded) {
+          confirmed++;
+          await PaymentService.clearPendingPayment(paymentId);
+        } else if (status == PaymentFinalStatus.failed) {
+          failed++;
+          await PaymentService.clearPendingPayment(paymentId);
+        }
+      } catch (_) {
+        // Keep payment pending if temporary status check fails.
+      }
+    }
+
+    if (!mounted) return;
+    if (confirmed > 0 || failed > 0) {
+      final message = 'Ažurirano stanje uplata: uspješno $confirmed, neuspješno $failed.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      await _loadPayments();
     }
   }
 
@@ -969,39 +1001,25 @@ class _HomeScreenState extends State<HomeScreen> {
   ) async {
     if (paymentId <= 0) return;
 
-    const pollInterval = Duration(seconds: 7);
-    for (var i = 0; i < 8; i++) {
-      await Future.delayed(pollInterval);
-      if (!mounted) return;
+    final finalStatus = await PaymentService.waitForFinalStatus(paymentId);
+    if (!mounted) return;
 
-      try {
-        final result = await PaymentService.getPaymentStatus(paymentId);
-        final rawStatus = result['status'];
-        final status = '$rawStatus'.toLowerCase();
-        final isSucceeded = rawStatus == 1 || status == 'succeeded';
-        final isFailed = rawStatus == 2 || status == 'failed';
-
-        if (isSucceeded) {
-          if (!mounted) return;
-          scaffoldMessenger.showSnackBar(
-            SnackBar(content: Text('Uplata #$paymentId je uspješno potvrđena.')),
-          );
-          return;
-        }
-
-        if (isFailed) {
-          if (!mounted) return;
-          scaffoldMessenger.showSnackBar(
-            SnackBar(content: Text('Uplata #$paymentId nije uspjela.')),
-          );
-          return;
-        }
-      } catch (_) {
-        // Ignore transient polling errors and continue.
-      }
+    if (finalStatus == PaymentFinalStatus.succeeded) {
+      await PaymentService.clearPendingPayment(paymentId);
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text('Uplata #$paymentId je uspješno potvrđena.')),
+      );
+      return;
     }
 
-    if (!mounted) return;
+    if (finalStatus == PaymentFinalStatus.failed) {
+      await PaymentService.clearPendingPayment(paymentId);
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text('Uplata #$paymentId nije uspjela.')),
+      );
+      return;
+    }
+
     scaffoldMessenger.showSnackBar(
       SnackBar(content: Text('Uplata #$paymentId je još uvijek u obradi.')),
     );
@@ -1060,6 +1078,9 @@ class _HomeScreenState extends State<HomeScreen> {
       final amount = result['amount'];
 
       if (sessionUrl != null && sessionUrl.toString().isNotEmpty) {
+        final parsedPaymentId = paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0;
+
+        await PaymentService.markPendingPayment(parsedPaymentId);
         final launched = await _launchStripeCheckout(sessionUrl.toString());
         if (!launched) {
           throw 'Ne mogu otvoriti checkout URL.';

@@ -128,37 +128,26 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
   Future<void> _trackPaymentStatus(int paymentId) async {
     if (paymentId <= 0) return;
 
-    const pollInterval = Duration(seconds: 7);
-    for (var i = 0; i < 8; i++) {
-      await Future.delayed(pollInterval);
+    final finalStatus = await PaymentService.waitForFinalStatus(paymentId);
+    if (!mounted) return;
+
+    if (finalStatus == PaymentFinalStatus.succeeded) {
+      await PaymentService.clearPendingPayment(paymentId);
       if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Članarina #$paymentId je uspješno plaćena.'), backgroundColor: kGreen),
+      );
+      await _load();
+      return;
+    }
 
-      try {
-        final result = await PaymentService.getPaymentStatus(paymentId);
-        final rawStatus = result['status'];
-        final status = '$rawStatus'.toLowerCase();
-        final succeeded = rawStatus == 1 || status == 'succeeded';
-        final failed = rawStatus == 2 || status == 'failed';
-
-        if (succeeded) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Članarina #$paymentId je uspješno plaćena.'), backgroundColor: kGreen),
-          );
-          await _load();
-          return;
-        }
-
-        if (failed) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Plaćanje članarine #$paymentId nije uspjelo.'), backgroundColor: kRed),
-          );
-          return;
-        }
-      } catch (_) {
-        // Ignore transient polling errors.
-      }
+    if (finalStatus == PaymentFinalStatus.failed) {
+      await PaymentService.clearPendingPayment(paymentId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Plaćanje članarine #$paymentId nije uspjelo.'), backgroundColor: kRed),
+      );
+      return;
     }
   }
 
@@ -233,6 +222,9 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
       final paymentId = result['paymentId'];
       final sessionUrl = result['sessionUrl'];
       final amount = result['amount'];
+      final parsedPaymentId = paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0;
+
+      await PaymentService.markPendingPayment(parsedPaymentId);
 
       if (sessionUrl != null && sessionUrl.toString().isNotEmpty) {
         final launched = await _launchStripeCheckout(sessionUrl.toString());
@@ -250,7 +242,7 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
           ),
         );
 
-        await _trackPaymentStatus(paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0);
+        await _trackPaymentStatus(parsedPaymentId);
       } else {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
