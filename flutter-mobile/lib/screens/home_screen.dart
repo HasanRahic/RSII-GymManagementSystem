@@ -53,6 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
   ];
   List<Map<String, dynamic>> _recentPayments = [];
   bool _loadingPayments = true;
+  int _pendingPaymentsCount = 0;
   bool _loadingReservations = true;
   final Set<int> _reservedSessionIds = <int>{};
   final Set<int> _reservationBusyIds = <int>{};
@@ -73,8 +74,15 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_selectedIndex == 3) {
         _ensureProfileDataLoaded();
       }
+      _refreshPendingPaymentsCount();
       _resumePendingPayments();
     });
+  }
+
+  Future<void> _refreshPendingPaymentsCount() async {
+    final pendingIds = await PaymentService.getPendingPaymentIds();
+    if (!mounted) return;
+    setState(() => _pendingPaymentsCount = pendingIds.length);
   }
 
   @override
@@ -219,7 +227,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _resumePendingPayments() async {
     final pendingIds = await PaymentService.getPendingPaymentIds();
-    if (!mounted || pendingIds.isEmpty) return;
+    if (!mounted) return;
+    if (pendingIds.isEmpty) {
+      setState(() => _pendingPaymentsCount = 0);
+      return;
+    }
 
     var confirmed = 0;
     var failed = 0;
@@ -240,6 +252,8 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
+    if (!mounted) return;
+    await _refreshPendingPaymentsCount();
     if (!mounted) return;
     if (confirmed > 0 || failed > 0) {
       final message = 'Ažurirano stanje uplata: uspješno $confirmed, neuspješno $failed.';
@@ -955,6 +969,10 @@ class _HomeScreenState extends State<HomeScreen> {
       // Open Stripe checkout URL
       if (sessionUrl != null && sessionUrl.isNotEmpty) {
         try {
+          final parsedPaymentId = paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0;
+          await PaymentService.markPendingPayment(parsedPaymentId);
+          await _refreshPendingPaymentsCount();
+
           final launched = await _launchStripeCheckout(sessionUrl);
           if (launched) {
             
@@ -969,7 +987,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // Webhook can take a few seconds; poll status so the user gets feedback in-app.
             await _trackPaymentStatus(
-              paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0,
+              parsedPaymentId,
               scaffoldMessenger,
             );
           } else {
@@ -1006,6 +1024,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (finalStatus == PaymentFinalStatus.succeeded) {
       await PaymentService.clearPendingPayment(paymentId);
+      await _refreshPendingPaymentsCount();
       scaffoldMessenger.showSnackBar(
         SnackBar(content: Text('Uplata #$paymentId je uspješno potvrđena.')),
       );
@@ -1014,6 +1033,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (finalStatus == PaymentFinalStatus.failed) {
       await PaymentService.clearPendingPayment(paymentId);
+      await _refreshPendingPaymentsCount();
       scaffoldMessenger.showSnackBar(
         SnackBar(content: Text('Uplata #$paymentId nije uspjela.')),
       );
@@ -1081,6 +1101,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final parsedPaymentId = paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0;
 
         await PaymentService.markPendingPayment(parsedPaymentId);
+        await _refreshPendingPaymentsCount();
         final launched = await _launchStripeCheckout(sessionUrl.toString());
         if (!launched) {
           throw 'Ne mogu otvoriti checkout URL.';
@@ -1096,7 +1117,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
 
         await _trackPaymentStatus(
-          paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0,
+          parsedPaymentId,
           scaffoldMessenger,
         );
       } else {
@@ -2630,6 +2651,33 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         const SizedBox(height: 12),
+        if (_pendingPaymentsCount > 0) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF8E1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFFFD54F)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.hourglass_top_rounded, size: 18, color: Color(0xFF8D6E00)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'U obradi: $_pendingPaymentsCount uplata. Status će biti automatski ažuriran.',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF6D4C00),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         if (_profileSection == 'Historija') ...[
           if (_loadingPayments)
             const _TopCard(

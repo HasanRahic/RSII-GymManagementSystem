@@ -15,11 +15,19 @@ class MyMembershipsScreen extends StatefulWidget {
 class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
   List<UserMembership> _memberships = [];
   bool _loading = true;
+  int _pendingPaymentsCount = 0;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _refreshPendingPaymentsCount();
+  }
+
+  Future<void> _refreshPendingPaymentsCount() async {
+    final pendingIds = await PaymentService.getPendingPaymentIds();
+    if (!mounted) return;
+    setState(() => _pendingPaymentsCount = pendingIds.length);
   }
 
   Future<void> _load() async {
@@ -133,6 +141,7 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
 
     if (finalStatus == PaymentFinalStatus.succeeded) {
       await PaymentService.clearPendingPayment(paymentId);
+      await _refreshPendingPaymentsCount();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Članarina #$paymentId je uspješno plaćena.'), backgroundColor: kGreen),
@@ -143,6 +152,7 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
 
     if (finalStatus == PaymentFinalStatus.failed) {
       await PaymentService.clearPendingPayment(paymentId);
+      await _refreshPendingPaymentsCount();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Plaćanje članarine #$paymentId nije uspjelo.'), backgroundColor: kRed),
@@ -225,6 +235,7 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
       final parsedPaymentId = paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0;
 
       await PaymentService.markPendingPayment(parsedPaymentId);
+      await _refreshPendingPaymentsCount();
 
       if (sessionUrl != null && sessionUrl.toString().isNotEmpty) {
         final launched = await _launchStripeCheckout(sessionUrl.toString());
@@ -364,6 +375,37 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,
+        bottom: _pendingPaymentsCount > 0
+            ? PreferredSize(
+                preferredSize: const Size.fromHeight(44),
+                child: Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF8E1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFFD54F)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.hourglass_top_rounded, size: 18, color: Color(0xFF8D6E00)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'U obradi: $_pendingPaymentsCount uplata. Status će se automatski osvježiti.',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF6D4C00),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            : null,
       ),
       body: _loading
           ? ListView(
