@@ -2673,6 +2673,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: _resumePendingPayments,
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF6D4C00),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  ),
+                  child: const Text('Osvježi'),
+                ),
               ],
             ),
           ),

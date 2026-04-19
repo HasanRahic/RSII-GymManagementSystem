@@ -401,6 +401,22 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          await _refreshPendingPaymentsCount();
+                          if (!mounted) return;
+                          messenger.showSnackBar(
+                            const SnackBar(content: Text('Status uplata je osvježen.')),
+                          );
+                        },
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF6D4C00),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        ),
+                        child: const Text('Osvježi'),
+                      ),
                     ],
                   ),
                 ),
