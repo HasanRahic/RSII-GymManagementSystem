@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Gym.Api.Services;
 using Gym.Services.DTOs;
 using Gym.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -9,7 +10,9 @@ namespace Gym.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class MembershipsController(IMembershipService membershipService) : ControllerBase
+public class MembershipsController(
+    IMembershipService membershipService,
+    IStripePaymentSyncService stripePaymentSyncService) : ControllerBase
 {
     // ----- Plans -----
 
@@ -45,6 +48,7 @@ public class MembershipsController(IMembershipService membershipService) : Contr
     {
         var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
+        await stripePaymentSyncService.ReconcileLatestMembershipPaymentsAsync(userId);
         return Ok(await membershipService.GetUserMembershipsAsync(userId));
     }
 
@@ -53,6 +57,7 @@ public class MembershipsController(IMembershipService membershipService) : Contr
     {
         var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
+        await stripePaymentSyncService.ReconcileLatestMembershipPaymentsAsync(userId);
         var membership = await membershipService.GetActiveMembershipAsync(userId);
         return membership is null ? NotFound() : Ok(membership);
     }

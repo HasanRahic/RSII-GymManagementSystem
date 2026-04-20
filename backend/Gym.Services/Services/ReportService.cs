@@ -72,7 +72,7 @@ public class ReportService : IReportService
             m.Id, m.UserId, $"{m.User.FirstName} {m.User.LastName}",
             m.MembershipPlanId, m.MembershipPlan.Name,
             m.GymId, m.Gym.Name, m.StartDate, m.EndDate, m.Price, m.DiscountPercent,
-            m.Status, Math.Max(0, (int)(m.EndDate - DateTime.UtcNow).TotalDays)));
+            m.Status, GetDaysRemaining(m.EndDate)));
     }
 
     public async Task<decimal> GetRevenueAsync(int? gymId, DateTime from, DateTime to)
@@ -81,5 +81,11 @@ public class ReportService : IReportService
             .Where(p => p.Status == PaymentStatus.Succeeded && p.CreatedAt >= from && p.CreatedAt <= to);
 
         return await query.SumAsync(p => (decimal?)p.Amount) ?? 0m;
+    }
+
+    private static int GetDaysRemaining(DateTime endDate)
+    {
+        var remainingDays = (endDate - DateTime.UtcNow).TotalDays;
+        return remainingDays <= 0 ? 0 : (int)Math.Ceiling(remainingDays);
     }
 }

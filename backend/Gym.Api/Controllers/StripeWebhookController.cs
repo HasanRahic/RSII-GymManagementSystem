@@ -1,3 +1,4 @@
+using Gym.Core.Entities;
 using Gym.Core.Enums;
 using Gym.Infrastructure.Data;
 using Gym.Services.DTOs;
@@ -90,18 +91,7 @@ public class StripeWebhookController : ControllerBase
             return;
         }
 
-        var payment = await _context.Payments.FirstOrDefaultAsync(p =>
-            p.StripeSessionId == session.Id ||
-            (!string.IsNullOrWhiteSpace(session.PaymentIntentId) && p.StripePaymentIntentId == session.PaymentIntentId));
-
-        if (payment is null &&
-            session.Metadata is not null &&
-            session.Metadata.TryGetValue("paymentId", out var paymentIdRaw) &&
-            int.TryParse(paymentIdRaw, out var paymentId))
-        {
-            payment = await _context.Payments.FirstOrDefaultAsync(p => p.Id == paymentId);
-        }
-
+        var payment = await FindPaymentAsync(session.Id, session.PaymentIntentId, session.Metadata);
         if (payment is null)
         {
             _logger.LogInformation("Stripe checkout session {SessionId} completed but no payment record was found.", session.Id);
@@ -111,34 +101,10 @@ public class StripeWebhookController : ControllerBase
         payment.StripeSessionId = session.Id;
         payment.StripePaymentIntentId = session.PaymentIntentId ?? payment.StripePaymentIntentId;
 
-        if (payment.Status != PaymentStatus.Succeeded)
-        {
-            if (payment.Type == PaymentType.Membership)
-            {
-                var metadata = session.Metadata ?? new Dictionary<string, string>();
+        await FulfillMembershipAsync(payment, session.Metadata, $"checkout session {session.Id}");
 
-                if (!metadata.TryGetValue("membershipPlanId", out var planIdRaw) ||
-                    !int.TryParse(planIdRaw, out var planId))
-                {
-                    _logger.LogWarning("Stripe membership session {SessionId} is missing membershipPlanId metadata.", session.Id);
-                    return;
-                }
-
-                var discountPercent = 0m;
-                if (metadata.TryGetValue("discountPercent", out var discountRaw))
-                {
-                    decimal.TryParse(discountRaw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out discountPercent);
-                }
-
-                await _membershipService.RenewAsync(new RenewMembershipDto(
-                    payment.UserId,
-                    planId,
-                    discountPercent));
-            }
-
-            payment.Status = PaymentStatus.Succeeded;
-            payment.CompletedAt ??= DateTime.UtcNow;
-        }
+        payment.Status = PaymentStatus.Succeeded;
+        payment.CompletedAt ??= DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
     }
@@ -151,14 +117,10 @@ public class StripeWebhookController : ControllerBase
             return;
         }
 
-        var payment = await _context.Payments.FirstOrDefaultAsync(p => p.StripePaymentIntentId == paymentIntent.Id);
-        if (payment is null &&
-            paymentIntent.Metadata is not null &&
-            paymentIntent.Metadata.TryGetValue("paymentId", out var paymentIdRaw) &&
-            int.TryParse(paymentIdRaw, out var paymentId))
-        {
-            payment = await _context.Payments.FirstOrDefaultAsync(p => p.Id == paymentId);
-        }
+        var payment = await FindPaymentAsync(
+            stripeSessionId: null,
+            stripePaymentIntentId: paymentIntent.Id,
+            metadata: paymentIntent.Metadata);
         if (payment is null)
         {
             _logger.LogInformation("Stripe payment intent {PaymentIntentId} succeeded but no payment record was found.", paymentIntent.Id);
@@ -166,6 +128,7 @@ public class StripeWebhookController : ControllerBase
         }
 
         payment.StripePaymentIntentId = paymentIntent.Id;
+        await FulfillMembershipAsync(payment, paymentIntent.Metadata, $"payment intent {paymentIntent.Id}");
         payment.Status = PaymentStatus.Succeeded;
         payment.CompletedAt ??= DateTime.UtcNow;
 
@@ -180,14 +143,10 @@ public class StripeWebhookController : ControllerBase
             return;
         }
 
-        var payment = await _context.Payments.FirstOrDefaultAsync(p => p.StripePaymentIntentId == paymentIntent.Id);
-        if (payment is null &&
-            paymentIntent.Metadata is not null &&
-            paymentIntent.Metadata.TryGetValue("paymentId", out var paymentIdRaw) &&
-            int.TryParse(paymentIdRaw, out var paymentId))
-        {
-            payment = await _context.Payments.FirstOrDefaultAsync(p => p.Id == paymentId);
-        }
+        var payment = await FindPaymentAsync(
+            stripeSessionId: null,
+            stripePaymentIntentId: paymentIntent.Id,
+            metadata: paymentIntent.Metadata);
         if (payment is null)
         {
             _logger.LogInformation("Stripe payment intent {PaymentIntentId} failed but no payment record was found.", paymentIntent.Id);
@@ -198,5 +157,91 @@ public class StripeWebhookController : ControllerBase
         payment.Status = PaymentStatus.Failed;
 
         await _context.SaveChangesAsync();
+    }
+
+    private async Task<Payment?> FindPaymentAsync(
+        string? stripeSessionId,
+        string? stripePaymentIntentId,
+        IDictionary<string, string>? metadata)
+    {
+        Payment? payment = null;
+
+        if (!string.IsNullOrWhiteSpace(stripeSessionId) || !string.IsNullOrWhiteSpace(stripePaymentIntentId))
+        {
+            payment = await _context.Payments.FirstOrDefaultAsync(p =>
+                (!string.IsNullOrWhiteSpace(stripeSessionId) && p.StripeSessionId == stripeSessionId) ||
+                (!string.IsNullOrWhiteSpace(stripePaymentIntentId) && p.StripePaymentIntentId == stripePaymentIntentId));
+        }
+
+        if (payment is not null)
+        {
+            return payment;
+        }
+
+        if (!TryGetPaymentId(metadata, out var paymentId))
+        {
+            return null;
+        }
+
+        return await _context.Payments.FirstOrDefaultAsync(p => p.Id == paymentId);
+    }
+
+    private async Task FulfillMembershipAsync(
+        Payment payment,
+        IDictionary<string, string>? metadata,
+        string source)
+    {
+        if (payment.Type != PaymentType.Membership)
+        {
+            return;
+        }
+
+        if (!TryBuildRenewMembershipDto(payment, metadata, out var dto))
+        {
+            _logger.LogWarning(
+                "Stripe membership payment {PaymentId} from {Source} is missing membership metadata.",
+                payment.Id,
+                source);
+            return;
+        }
+
+        await _membershipService.RenewFromPaymentAsync(payment.Id, dto);
+    }
+
+    private static bool TryGetPaymentId(IDictionary<string, string>? metadata, out int paymentId)
+    {
+        paymentId = 0;
+        return metadata is not null
+            && metadata.TryGetValue("paymentId", out var paymentIdRaw)
+            && int.TryParse(paymentIdRaw, out paymentId);
+    }
+
+    private static bool TryBuildRenewMembershipDto(
+        Payment payment,
+        IDictionary<string, string>? metadata,
+        out RenewMembershipDto dto)
+    {
+        dto = default!;
+
+        if (metadata is null ||
+            !metadata.TryGetValue("membershipPlanId", out var planIdRaw) ||
+            !int.TryParse(planIdRaw, out var planId))
+        {
+            return false;
+        }
+
+        var discountPercent = 0m;
+        if (metadata.TryGetValue("discountPercent", out var discountRaw))
+        {
+            decimal.TryParse(
+                discountRaw,
+                System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out discountPercent);
+        }
+
+        discountPercent = Math.Clamp(discountPercent, 0m, 100m);
+        dto = new RenewMembershipDto(payment.UserId, planId, discountPercent);
+        return true;
     }
 }

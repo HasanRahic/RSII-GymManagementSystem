@@ -1,5 +1,6 @@
 using System.Text;
 using Gym.Api.Messaging;
+using Gym.Api.Services;
 using Gym.Infrastructure.Data;
 using Gym.Infrastructure.Repositories;
 using Gym.Infrastructure.Seed;
@@ -65,6 +66,7 @@ builder.Services.AddSwaggerGen();
 
 // Notification publisher (RabbitMQ)
 builder.Services.AddSingleton<INotificationPublisher, RabbitMqNotificationPublisher>();
+builder.Services.AddScoped<IStripePaymentSyncService, StripePaymentSyncService>();
 
 // CORS – allow Flutter apps
 builder.Services.AddCors(options =>

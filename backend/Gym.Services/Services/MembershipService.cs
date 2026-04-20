@@ -39,7 +39,7 @@ public class MembershipService : IMembershipService
     public async Task<MembershipPlanDto> UpdatePlanAsync(int id, UpdateMembershipPlanDto dto)
     {
         var plan = await _context.MembershipPlans.Include(p => p.Gym).FirstOrDefaultAsync(p => p.Id == id)
-            ?? throw new KeyNotFoundException("Plan nije pronađen.");
+            ?? throw new KeyNotFoundException("Plan nije pronadjen.");
 
         plan.Name         = dto.Name;
         plan.Description  = dto.Description;
@@ -85,39 +85,71 @@ public class MembershipService : IMembershipService
         return m is null ? null : ToMembershipDto(m);
     }
 
-    public async Task<UserMembershipDto> RenewAsync(RenewMembershipDto dto)
+    public Task<UserMembershipDto> RenewAsync(RenewMembershipDto dto)
+        => RenewInternalAsync(dto, paymentId: null);
+
+    public Task<UserMembershipDto> RenewFromPaymentAsync(int paymentId, RenewMembershipDto dto)
+        => RenewInternalAsync(dto, paymentId);
+
+    private async Task<UserMembershipDto> RenewInternalAsync(RenewMembershipDto dto, int? paymentId)
     {
         var plan = await _context.MembershipPlans.Include(p => p.Gym).FirstOrDefaultAsync(p => p.Id == dto.MembershipPlanId)
-            ?? throw new KeyNotFoundException("Plan nije pronađen.");
+            ?? throw new KeyNotFoundException("Plan nije pronadjen.");
 
         var user = await _context.Users.FindAsync(dto.UserId)
-            ?? throw new KeyNotFoundException("Korisnik nije pronađen.");
+            ?? throw new KeyNotFoundException("Korisnik nije pronadjen.");
 
-        // Expire any active membership first
-        var active = await _context.UserMemberships
-            .FirstOrDefaultAsync(m => m.UserId == dto.UserId && m.Status == MembershipStatus.Active);
-        if (active is not null)
+        if (paymentId.HasValue)
         {
-            active.Status = MembershipStatus.Expired;
+            var existingMembership = await _context.UserMemberships
+                .Include(m => m.MembershipPlan)
+                .Include(m => m.Gym)
+                .Include(m => m.User)
+                .FirstOrDefaultAsync(m => m.PaymentId == paymentId.Value);
+
+            if (existingMembership is not null)
+            {
+                return ToMembershipDto(existingMembership);
+            }
+        }
+
+        var activeMemberships = await _context.UserMemberships
+            .Where(m => m.UserId == dto.UserId && m.Status == MembershipStatus.Active)
+            .OrderByDescending(m => m.EndDate)
+            .ToListAsync();
+
+        var now = DateTime.UtcNow;
+        var carryForwardUntil = activeMemberships
+            .Select(m => m.EndDate)
+            .Where(endDate => endDate > now)
+            .DefaultIfEmpty(now)
+            .Max();
+
+        foreach (var activeMembership in activeMemberships)
+        {
+            activeMembership.Status = MembershipStatus.Expired;
         }
 
         var discounted = plan.Price * (1 - dto.DiscountPercent / 100);
         var membership = new UserMembership
         {
             UserId           = dto.UserId,
+            User             = user,
             MembershipPlanId = plan.Id,
+            MembershipPlan   = plan,
             GymId            = plan.GymId,
-            StartDate        = DateTime.UtcNow,
-            EndDate          = DateTime.UtcNow.AddDays(plan.DurationDays),
+            Gym              = plan.Gym,
+            StartDate        = now,
+            EndDate          = carryForwardUntil.AddDays(plan.DurationDays),
             Price            = discounted,
             DiscountPercent  = dto.DiscountPercent,
-            Status           = MembershipStatus.Active
+            Status           = MembershipStatus.Active,
+            PaymentId        = paymentId
         };
 
         _context.UserMemberships.Add(membership);
         await _context.SaveChangesAsync();
 
-        await _context.Entry(membership).Reference(m => m.User).LoadAsync();
         return ToMembershipDto(membership);
     }
 
@@ -151,5 +183,11 @@ public class MembershipService : IMembershipService
         m.Id, m.UserId, $"{m.User.FirstName} {m.User.LastName}",
         m.MembershipPlanId, m.MembershipPlan.Name,
         m.GymId, m.Gym.Name, m.StartDate, m.EndDate, m.Price, m.DiscountPercent,
-        m.Status, Math.Max(0, (int)(m.EndDate - DateTime.UtcNow).TotalDays));
+        m.Status, GetDaysRemaining(m.EndDate));
+
+    private static int GetDaysRemaining(DateTime endDate)
+    {
+        var remainingDays = (endDate - DateTime.UtcNow).TotalDays;
+        return remainingDays <= 0 ? 0 : (int)Math.Ceiling(remainingDays);
+    }
 }

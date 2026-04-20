@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Gym.Api.Services;
 using Gym.Core.Entities;
 using Gym.Core.Enums;
 using Gym.Infrastructure.Data;
@@ -15,7 +16,9 @@ namespace Gym.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class PaymentsController(GymDbContext context) : ControllerBase
+public class PaymentsController(
+    GymDbContext context,
+    IStripePaymentSyncService stripePaymentSyncService) : ControllerBase
 {
     [HttpGet("my")]
     public async Task<IActionResult> GetMyPayments([FromQuery] int take = 20)
@@ -56,9 +59,7 @@ public class PaymentsController(GymDbContext context) : ControllerBase
             return Unauthorized();
         }
 
-        var payment = await context.Payments
-            .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Id == paymentId && p.UserId == userId);
+        var payment = await stripePaymentSyncService.ReconcilePaymentAsync(paymentId, userId);
 
         if (payment is null)
         {
@@ -138,6 +139,12 @@ public class PaymentsController(GymDbContext context) : ControllerBase
 
         // Create Stripe Checkout Session
         var domainUrl = $"{Request.Scheme}://{Request.Host}";
+        var metadata = new Dictionary<string, string>
+        {
+            ["paymentId"] = payment.Id.ToString(),
+            ["userId"] = userId.ToString(),
+            ["type"] = "Shop"
+        };
         var options = new SessionCreateOptions
         {
             PaymentMethodTypes = new List<string> { "card" },
@@ -146,11 +153,10 @@ public class PaymentsController(GymDbContext context) : ControllerBase
             SuccessUrl = $"{domainUrl}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}",
             CancelUrl = $"{domainUrl}/checkout/cancel",
             CustomerEmail = userEmail,
-            Metadata = new Dictionary<string, string>
+            Metadata = metadata,
+            PaymentIntentData = new SessionPaymentIntentDataOptions
             {
-                ["paymentId"] = payment.Id.ToString(),
-                ["userId"] = userId.ToString(),
-                ["type"] = "Shop"
+                Metadata = new Dictionary<string, string>(metadata)
             }
         };
 
@@ -228,6 +234,15 @@ public class PaymentsController(GymDbContext context) : ControllerBase
         context.Payments.Add(payment);
         await context.SaveChangesAsync();
 
+        var metadata = new Dictionary<string, string>
+        {
+            ["paymentId"] = payment.Id.ToString(),
+            ["userId"] = userId.ToString(),
+            ["type"] = "Membership",
+            ["membershipPlanId"] = plan.Id.ToString(),
+            ["discountPercent"] = discountPercent.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        };
+
         var options = new SessionCreateOptions
         {
             PaymentMethodTypes = new List<string> { "card" },
@@ -252,13 +267,10 @@ public class PaymentsController(GymDbContext context) : ControllerBase
             SuccessUrl = $"{Request.Scheme}://{Request.Host}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}",
             CancelUrl = $"{Request.Scheme}://{Request.Host}/checkout/cancel",
             CustomerEmail = userEmail,
-            Metadata = new Dictionary<string, string>
+            Metadata = metadata,
+            PaymentIntentData = new SessionPaymentIntentDataOptions
             {
-                ["paymentId"] = payment.Id.ToString(),
-                ["userId"] = userId.ToString(),
-                ["type"] = "Membership",
-                ["membershipPlanId"] = plan.Id.ToString(),
-                ["discountPercent"] = discountPercent.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                Metadata = new Dictionary<string, string>(metadata)
             }
         };
 
