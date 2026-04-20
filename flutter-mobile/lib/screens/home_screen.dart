@@ -93,6 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _refreshPendingPaymentsCount();
       _resumePendingPayments();
       _pendingPaymentsTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+        _loadMembership();
         _refreshPendingPaymentsCount();
         _resumePendingPayments();
       });
@@ -292,6 +293,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     await _refreshPendingPaymentsCount();
     if (!mounted) return;
+    if (confirmed > 0) {
+      await _loadMembership();
+      if (!mounted) return;
+    }
     if (confirmed > 0 || failed > 0) {
       final message = 'Ažurirano stanje uplata: uspješno $confirmed, neuspješno $failed.';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
@@ -1061,6 +1066,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (finalStatus == PaymentFinalStatus.succeeded) {
       await PaymentService.clearPendingPayment(paymentId);
+      await _loadMembership();
       await _refreshPendingPaymentsCount();
       scaffoldMessenger.showSnackBar(
         SnackBar(content: Text('Uplata #$paymentId je uspješno potvrđena.')),
