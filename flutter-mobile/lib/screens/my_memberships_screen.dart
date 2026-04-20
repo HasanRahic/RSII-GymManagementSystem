@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../core/constants.dart';
@@ -16,12 +18,22 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
   List<UserMembership> _memberships = [];
   bool _loading = true;
   int _pendingPaymentsCount = 0;
+  Timer? _pendingPaymentsTimer;
 
   @override
   void initState() {
     super.initState();
     _load();
     _refreshPendingPaymentsCount();
+    _pendingPaymentsTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+      _refreshPendingPaymentsCount();
+    });
+  }
+
+  @override
+  void dispose() {
+    _pendingPaymentsTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _refreshPendingPaymentsCount() async {

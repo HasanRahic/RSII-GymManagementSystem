@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -54,6 +56,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _recentPayments = [];
   bool _loadingPayments = true;
   int _pendingPaymentsCount = 0;
+  Timer? _pendingPaymentsTimer;
   bool _loadingReservations = true;
   final Set<int> _reservedSessionIds = <int>{};
   final Set<int> _reservationBusyIds = <int>{};
@@ -76,6 +79,10 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       _refreshPendingPaymentsCount();
       _resumePendingPayments();
+      _pendingPaymentsTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+        _refreshPendingPaymentsCount();
+        _resumePendingPayments();
+      });
     });
   }
 
@@ -87,6 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _pendingPaymentsTimer?.cancel();
     _gymSearchCtrl.dispose();
     _shopSearchCtrl.dispose();
     super.dispose();
