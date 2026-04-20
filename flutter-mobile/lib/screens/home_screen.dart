@@ -21,6 +21,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   UserMembership? _activeMembership;
+  bool _hasActiveGroupTrainingMembership = false;
   bool _loadingMembership = true;
   bool _loadingCatalog = true;
   bool _loadingTrainingData = false;
@@ -63,6 +64,18 @@ class _HomeScreenState extends State<HomeScreen> {
   String _billingTypeFilter = 'Sve';
   bool _billingSortNewestFirst = true;
 
+  bool get _hasActiveMembership => _activeMembership != null;
+  bool get _hasGymAccess => _hasActiveMembership || _hasActiveGroupTrainingMembership;
+
+  bool _isGroupMembershipName(String planName) {
+    return planName.toLowerCase().contains('grup');
+  }
+
+  bool _isGroupMembershipPlan(MembershipPlanModel plan) {
+    final text = '${plan.name} ${plan.description ?? ''}'.toLowerCase();
+    return text.contains('grup');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -103,18 +116,34 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadMembership() async {
     setState(() => _loadingMembership = true);
     try {
-      final membership = await MembershipService.getMyActiveMembership();
+      final results = await Future.wait<dynamic>([
+        MembershipService.getMyActiveMembership(),
+        MembershipService.getMyMemberships(),
+      ]);
+      final membership = results[0] as UserMembership?;
+      final memberships = results[1] as List<UserMembership>;
+      final hasGroupTrainingMembership = memberships.any(
+        (m) => m.status == 0 && _isGroupMembershipName(m.planName),
+      );
+
       if (!mounted) return;
       final fallbackCount = ((membership?.daysRemaining ?? 0) ~/ 2) + 6;
       setState(() {
         _activeMembership = membership;
+        _hasActiveGroupTrainingMembership = hasGroupTrainingMembership;
+        if (!_hasGymAccess && (_selectedIndex == 0 || _selectedIndex == 2)) {
+          _selectedIndex = 1;
+        }
         if (!_isCheckedIn) {
           _membersInGym = fallbackCount;
         }
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _activeMembership = null);
+      setState(() {
+        _activeMembership = null;
+        _hasActiveGroupTrainingMembership = false;
+      });
     } finally {
       if (mounted) setState(() => _loadingMembership = false);
     }
@@ -1423,6 +1452,17 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIndex: _selectedIndex,
         backgroundColor: Colors.white,
         onDestinationSelected: (index) {
+          final isLockedWithoutMembership = !_hasGymAccess && (index == 0 || index == 2);
+          if (isLockedWithoutMembership) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Za pristup ovoj sekciji aktivirajte članarinu ili grupni trening.'),
+              ),
+            );
+            setState(() => _selectedIndex = 1);
+            return;
+          }
+
           setState(() => _selectedIndex = index);
           if (index == 0 || index == 1 || index == 2) {
             _ensureTrainingDataLoaded();
@@ -1459,6 +1499,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHomeTab(BuildContext context, AuthResponse? user) {
+    if (!_hasGymAccess) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        children: [
+          _emptyStateCard(
+            title: 'Početna je zaključana',
+            message: 'Nakon aktivacije članarine ili grupnog treninga, ovdje ćete vidjeti podatke vaše teretane i brze akcije.',
+            icon: Icons.lock_outline,
+            actionLabel: 'Idi na teretane',
+            onAction: () => setState(() => _selectedIndex = 1),
+          ),
+        ],
+      );
+    }
+
     final gymName = _activeMembership?.gymName ?? 'Iron Gym Sarajevo';
     final planName = _activeMembership?.planName ?? 'Bez aktivne članarine';
     final daysLeft = _activeMembership?.daysRemaining ?? 0;
@@ -2211,6 +2267,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     Widget buildGymCard(GymModel gym) {
+      final gymGroupSessions = sessionsByGym[gym.id] ?? const <TrainingSessionModel>[];
       return _GymCard(
         name: gym.name,
         city: '${gym.cityName}, ${gym.countryName}',
@@ -2219,6 +2276,8 @@ class _HomeScreenState extends State<HomeScreen> {
         status: gym.statusLabel,
         tags: tagsForGym(gym),
         accent: gym.isOpen ? const Color(0xFF3BB76A) : const Color(0xFFE76F6F),
+        onDetails: () => _openGymOffers(gym, gymGroupSessions),
+        onJoin: () => _openGymOffers(gym, gymGroupSessions),
       );
     }
 
@@ -2444,6 +2503,104 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
         ],
       ],
+    );
+  }
+
+  Future<void> _openGymOffers(
+    GymModel gym,
+    List<TrainingSessionModel> groupSessions,
+  ) async {
+    final gymPlans = _plans.where((p) => p.isActive && p.gymId == gym.id).toList();
+    final membershipPlans = gymPlans.where((p) => !_isGroupMembershipPlan(p)).toList();
+    final groupTrainingPlans = gymPlans.where(_isGroupMembershipPlan).toList();
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        Widget buildPlanTile(MembershipPlanModel plan, {required bool isGroup}) {
+          return ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 0),
+            title: Text(plan.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text(
+              '${plan.durationDays} dana · ${isGroup ? 'Grupni paket' : 'Članarina'}',
+            ),
+            trailing: FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _purchaseMembershipPlan(plan);
+              },
+              child: Text('${plan.price.toStringAsFixed(0)} KM'),
+            ),
+          );
+        }
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD1D5DB),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(gym.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 4),
+                  Text('${gym.cityName}, ${gym.countryName}', style: const TextStyle(color: Color(0xFF64748B))),
+                  const SizedBox(height: 14),
+
+                  const Text('Članarine', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 8),
+                  if (membershipPlans.isEmpty)
+                    const Text('Nema aktivnih mjesečnih/tromjesečnih/godišnjih članarina.', style: TextStyle(color: Color(0xFF8A94A8)))
+                  else
+                    ...membershipPlans.map((plan) => buildPlanTile(plan, isGroup: false)),
+
+                  const SizedBox(height: 14),
+                  const Text('Grupni treninzi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 8),
+                  if (groupTrainingPlans.isEmpty)
+                    const Text('Nema posebnih grupnih paketa članarine.', style: TextStyle(color: Color(0xFF8A94A8)))
+                  else
+                    ...groupTrainingPlans.map((plan) => buildPlanTile(plan, isGroup: true)),
+
+                  if (groupSessions.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Dostupni grupni termini (rezervacija/plaćanje posebno):',
+                      style: TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    ...groupSessions.take(3).map(
+                      (session) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          '• ${session.title} · ${session.date.substring(0, 10)} · ${session.price.toStringAsFixed(0)} KM',
+                          style: const TextStyle(color: Color(0xFF475569), fontSize: 12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -2741,7 +2898,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         .fold<double>(0, (sum, p) => sum + (((p['amount'] as num?) ?? 0).toDouble()))
                         .toStringAsFixed(0)} KM',
               ),
-              _MetricItem(label: 'Aktivna članarina', value: _activeMembership == null ? 'Ne' : 'Da'),
+              _MetricItem(label: 'Aktivan status', value: _hasGymAccess ? 'Da' : 'Ne'),
               _MetricItem(label: 'U obradi', value: '${_billingPayments.where((p) {
                 final s = '${p['status']}'.toLowerCase();
                 return p['status'] == 0 || s == 'pending';
@@ -3430,8 +3587,20 @@ class _GymCard extends StatelessWidget {
   final String status;
   final List<String> tags;
   final Color accent;
+  final VoidCallback onDetails;
+  final VoidCallback onJoin;
 
-  const _GymCard({required this.name, required this.city, required this.rating, required this.reviews, required this.status, required this.tags, required this.accent});
+  const _GymCard({
+    required this.name,
+    required this.city,
+    required this.rating,
+    required this.reviews,
+    required this.status,
+    required this.tags,
+    required this.accent,
+    required this.onDetails,
+    required this.onJoin,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -3493,7 +3662,7 @@ class _GymCard extends StatelessWidget {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () {},
+                  onPressed: onDetails,
                   child: const Text('Detalji'),
                 ),
               ),
@@ -3501,7 +3670,7 @@ class _GymCard extends StatelessWidget {
               Expanded(
                 child: FilledButton(
                   style: FilledButton.styleFrom(backgroundColor: const Color(0xFF657BE6)),
-                  onPressed: () {},
+                  onPressed: onJoin,
                   child: const Text('Učlani se'),
                 ),
               ),
