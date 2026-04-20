@@ -13,7 +13,11 @@ public static class DbSeeder
     {
         await context.Database.MigrateAsync();
 
-        if (await context.Countries.AnyAsync()) return;
+        if (await context.Countries.AnyAsync())
+        {
+            await EnsureMembershipPlanCatalogAsync(context);
+            return;
+        }
 
         // ── Countries & Cities ──────────────────────────────────────────────
         var bih = new Country { Name = "Bosna i Hercegovina", Code = "BA" };
@@ -91,11 +95,14 @@ public static class DbSeeder
         {
             new() { Name = "Mjesečna",    DurationDays = 30,  Price = 40m,  GymId = gym1.Id },
             new() { Name = "Tromjesečna", DurationDays = 90,  Price = 110m, GymId = gym1.Id },
+            new() { Name = "Polugodišnja", DurationDays = 180, Price = 210m, GymId = gym1.Id },
             new() { Name = "Godišnja",    DurationDays = 365, Price = 380m, GymId = gym1.Id },
             new() { Name = "Mjesečna",    DurationDays = 30,  Price = 35m,  GymId = gym2.Id },
             new() { Name = "Tromjesečna", DurationDays = 90,  Price = 95m,  GymId = gym2.Id },
+            new() { Name = "Polugodišnja", DurationDays = 180, Price = 190m, GymId = gym2.Id },
             new() { Name = "Godišnja",    DurationDays = 365, Price = 340m, GymId = gym2.Id },
             new() { Name = "Mjesečna",    DurationDays = 30,  Price = 38m,  GymId = gym3.Id },
+            new() { Name = "Polugodišnja", DurationDays = 180, Price = 200m, GymId = gym3.Id },
             new() { Name = "Godišnja",    DurationDays = 365, Price = 360m, GymId = gym3.Id },
         };
         context.MembershipPlans.AddRange(plans);
@@ -225,6 +232,50 @@ public static class DbSeeder
             new UserBadge { UserId = member.Id, BadgeId = badges[0].Id, EarnedAt = now.AddDays(-14) },
             new UserBadge { UserId = member.Id, BadgeId = badges[1].Id, EarnedAt = now.AddDays(-10) }
         );
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task EnsureMembershipPlanCatalogAsync(GymDbContext context)
+    {
+        var gyms = await context.Gyms
+            .AsNoTracking()
+            .Select(g => g.Id)
+            .ToListAsync();
+
+        if (gyms.Count == 0)
+        {
+            return;
+        }
+
+        var targetPlans = new List<(int GymId, string Name, int DurationDays, decimal Price)>
+        {
+            (gyms.ElementAtOrDefault(0), "Polugodišnja", 180, 210m),
+            (gyms.ElementAtOrDefault(1), "Polugodišnja", 180, 190m),
+            (gyms.ElementAtOrDefault(2), "Polugodišnja", 180, 200m),
+        }
+        .Where(p => p.GymId > 0)
+        .ToList();
+
+        foreach (var target in targetPlans)
+        {
+            var exists = await context.MembershipPlans.AnyAsync(p =>
+                p.GymId == target.GymId &&
+                p.DurationDays == target.DurationDays &&
+                p.IsActive);
+
+            if (!exists)
+            {
+                context.MembershipPlans.Add(new MembershipPlan
+                {
+                    Name = target.Name,
+                    DurationDays = target.DurationDays,
+                    Price = target.Price,
+                    GymId = target.GymId,
+                    IsActive = true,
+                });
+            }
+        }
+
         await context.SaveChangesAsync();
     }
 

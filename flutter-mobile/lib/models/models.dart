@@ -278,6 +278,21 @@ class UserMembership {
   });
 
   factory UserMembership.fromJson(Map<String, dynamic> j) {
+    int parseStatus(dynamic raw) {
+      if (raw is int) return raw;
+      final text = '$raw'.toLowerCase();
+      if (text == 'active') return 0;
+      if (text == 'expired') return 1;
+      if (text == 'cancelled' || text == 'canceled') return 2;
+      return int.tryParse(text) ?? 1;
+    }
+
+    int parseDays(dynamic raw) {
+      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
+      return int.tryParse('$raw') ?? 0;
+    }
+
     return UserMembership(
       id: j['id'],
       membershipPlanId: j['membershipPlanId'],
@@ -286,13 +301,18 @@ class UserMembership {
       startDate: j['startDate'],
       endDate: j['endDate'],
       price: (j['price'] as num).toDouble(),
-      status: j['status'],
-      daysRemaining: j['daysRemaining'],
+      status: parseStatus(j['status']),
+      daysRemaining: parseDays(j['daysRemaining']),
     );
   }
 
   static const statusLabels = ['Aktivna', 'Istekla', 'Otkazana'];
-  String get statusLabel => statusLabels[status];
+  String get statusLabel {
+    if (status >= 0 && status < statusLabels.length) {
+      return statusLabels[status];
+    }
+    return 'Nepoznat status';
+  }
 }
 
 class TrainerApplicationModel {

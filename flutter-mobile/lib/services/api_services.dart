@@ -85,6 +85,19 @@ class PaymentService {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  static Future<Map<String, dynamic>> createSessionCheckout({
+    required int trainingSessionId,
+  }) async {
+    final data = await ApiClient.post('/payments/session-checkout', {
+      'type': 1,
+      'membershipPlanId': null,
+      'trainingSessionId': trainingSessionId,
+      'discountPercent': 0,
+    });
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   static Future<Map<String, dynamic>> createShopOrder({
     required List<Map<String, dynamic>> items,
   }) async {

@@ -29,6 +29,8 @@ public class PaymentsController(
             return Unauthorized();
         }
 
+        await stripePaymentSyncService.ReconcileLatestMembershipPaymentsAsync(userId);
+
         take = Math.Clamp(take, 1, 100);
 
         var items = await context.Payments
@@ -259,6 +261,128 @@ public class PaymentsController(
                             Description = $"Članarina za {plan.Gym.Name}"
                         },
                         UnitAmountDecimal = totalAmount * 100m
+                    },
+                    Quantity = 1
+                }
+            },
+            Mode = "payment",
+            SuccessUrl = $"{Request.Scheme}://{Request.Host}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}",
+            CancelUrl = $"{Request.Scheme}://{Request.Host}/checkout/cancel",
+            CustomerEmail = userEmail,
+            Metadata = metadata,
+            PaymentIntentData = new SessionPaymentIntentDataOptions
+            {
+                Metadata = new Dictionary<string, string>(metadata)
+            }
+        };
+
+        Session session;
+        try
+        {
+            var sessionService = new SessionService();
+            session = await sessionService.CreateAsync(options);
+        }
+        catch (StripeException ex)
+        {
+            payment.Status = PaymentStatus.Failed;
+            payment.CompletedAt = DateTime.UtcNow;
+            await context.SaveChangesAsync();
+            return BadRequest(new { message = $"Stripe greška: {ex.Message}" });
+        }
+
+        payment.StripeSessionId = session.Id;
+        await context.SaveChangesAsync();
+
+        return Ok(new StripeCheckoutDto(
+            payment.Id,
+            session.Url ?? string.Empty,
+            payment.Amount
+        ));
+    }
+
+    [HttpPost("session-checkout")]
+    public async Task<IActionResult> CreateSessionCheckout([FromBody] CreateCheckoutSessionDto dto)
+    {
+        if (dto.Type != PaymentType.Session || !dto.TrainingSessionId.HasValue)
+        {
+            return BadRequest(new { message = "Neispravan tip grupnog treninga." });
+        }
+
+        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(idClaim, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var trainingSession = await context.TrainingSessions
+            .Include(s => s.Gym)
+            .Include(s => s.Reservations)
+            .FirstOrDefaultAsync(s => s.Id == dto.TrainingSessionId.Value && s.IsActive);
+
+        if (trainingSession is null)
+        {
+            return NotFound(new { message = "Grupni trening nije pronađen." });
+        }
+
+        if (trainingSession.Reservations.Any(r => r.UserId == userId && r.Status == ReservationStatus.Confirmed))
+        {
+            return BadRequest(new { message = "Već ste prijavljeni na ovaj grupni trening." });
+        }
+
+        var activeReservations = trainingSession.Reservations.Count(r => r.Status == ReservationStatus.Confirmed);
+        if (activeReservations >= trainingSession.MaxParticipants)
+        {
+            return BadRequest(new { message = "Grupni trening je popunjen." });
+        }
+
+        var userEmail = await context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => u.Email)
+            .FirstOrDefaultAsync();
+
+        if (string.IsNullOrWhiteSpace(userEmail))
+        {
+            return BadRequest(new { message = "Korisnik nema validan email za Stripe checkout." });
+        }
+
+        var payment = new Payment
+        {
+            UserId = userId,
+            Amount = trainingSession.Price,
+            Currency = "BAM",
+            Type = PaymentType.Session,
+            Status = PaymentStatus.Pending,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        context.Payments.Add(payment);
+        await context.SaveChangesAsync();
+
+        var metadata = new Dictionary<string, string>
+        {
+            ["paymentId"] = payment.Id.ToString(),
+            ["userId"] = userId.ToString(),
+            ["type"] = "Session",
+            ["trainingSessionId"] = trainingSession.Id.ToString(),
+        };
+
+        var options = new SessionCreateOptions
+        {
+            PaymentMethodTypes = new List<string> { "card" },
+            LineItems = new List<SessionLineItemOptions>
+            {
+                new()
+                {
+                    PriceData = new SessionLineItemPriceDataOptions
+                    {
+                        Currency = "bam",
+                        ProductData = new SessionLineItemPriceDataProductDataOptions
+                        {
+                            Name = trainingSession.Title,
+                            Description = $"Grupni trening u {trainingSession.Gym.Name}"
+                        },
+                        UnitAmountDecimal = trainingSession.Price * 100m
                     },
                     Quantity = 1
                 }

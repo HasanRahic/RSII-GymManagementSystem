@@ -21,11 +21,12 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   UserMembership? _activeMembership;
+  bool _hasActiveGroupTrainingAccess = false;
   bool _loadingMembership = true;
   bool _loadingCatalog = true;
   bool _loadingTrainingData = false;
   bool _trainingDataLoaded = false;
-  int _selectedIndex = 0;
+  int _selectedIndex = 1;
   String _profileSection = 'Historija';
   int _membersInGym = 12;
   bool _isCheckedIn = false;
@@ -63,6 +64,18 @@ class _HomeScreenState extends State<HomeScreen> {
   String _billingTypeFilter = 'Sve';
   bool _billingSortNewestFirst = true;
 
+  bool get _hasGymAccess => _activeMembership != null || _hasActiveGroupTrainingAccess;
+
+  bool _isSucceededSessionPayment(Map<String, dynamic> payment) {
+    final rawType = payment['type'];
+    final rawStatus = payment['status'];
+    final typeText = '$rawType'.toLowerCase();
+    final statusText = '$rawStatus'.toLowerCase();
+    final isSession = rawType == 1 || typeText == 'session';
+    final isSucceeded = rawStatus == 1 || statusText == 'succeeded';
+    return isSession && isSucceeded;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -71,7 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _syncCheckInState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_selectedIndex == 0) {
+      if (_selectedIndex == 0 || _selectedIndex == 1 || _selectedIndex == 2) {
         _ensureTrainingDataLoaded();
       }
       if (_selectedIndex == 3) {
@@ -80,6 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _refreshPendingPaymentsCount();
       _resumePendingPayments();
       _pendingPaymentsTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+        _loadMembership();
         _refreshPendingPaymentsCount();
         _resumePendingPayments();
       });
@@ -103,18 +117,42 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadMembership() async {
     setState(() => _loadingMembership = true);
     try {
-      final membership = await MembershipService.getMyActiveMembership();
+      final results = await Future.wait<dynamic>([
+        MembershipService.getMyActiveMembership(),
+        MembershipService.getMyMemberships(),
+        PaymentService.getMyPayments(take: 50),
+      ]);
+      final membership = results[0] as UserMembership?;
+      final memberships = results[1] as List<UserMembership>;
+      final payments = results[2] as List<Map<String, dynamic>>;
+      final activeFromList = memberships
+          .where((m) => m.status == 0)
+          .toList()
+        ..sort((a, b) => b.id.compareTo(a.id));
+      final resolvedMembership = membership ?? (activeFromList.isNotEmpty ? activeFromList.first : null);
+      final hasGroupTrainingAccess = payments.any(_isSucceededSessionPayment);
+
       if (!mounted) return;
-      final fallbackCount = ((membership?.daysRemaining ?? 0) ~/ 2) + 6;
+      final fallbackCount = ((resolvedMembership?.daysRemaining ?? 0) ~/ 2) + 6;
       setState(() {
-        _activeMembership = membership;
+        _activeMembership = resolvedMembership;
+        _hasActiveGroupTrainingAccess = hasGroupTrainingAccess;
+        if (!_hasGymAccess && (_selectedIndex == 0 || _selectedIndex == 2)) {
+          _selectedIndex = 1;
+        }
+        if (_hasGymAccess && _selectedIndex == 1) {
+          _selectedIndex = 0;
+        }
         if (!_isCheckedIn) {
           _membersInGym = fallbackCount;
         }
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _activeMembership = null);
+      setState(() {
+        _activeMembership = null;
+        _hasActiveGroupTrainingAccess = false;
+      });
     } finally {
       if (mounted) setState(() => _loadingMembership = false);
     }
@@ -1032,6 +1070,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (finalStatus == PaymentFinalStatus.succeeded) {
       await PaymentService.clearPendingPayment(paymentId);
+      await _loadMembership();
+      await _loadPayments();
       await _refreshPendingPaymentsCount();
       scaffoldMessenger.showSnackBar(
         SnackBar(content: Text('Uplata #$paymentId je uspješno potvrđena.')),
@@ -1146,6 +1186,208 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(content: Text('Greška pri plaćanju članarine: $e')),
       );
     }
+  }
+
+  Future<void> _purchaseGroupTraining(TrainingSessionModel session) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Uplati grupni trening: ${session.title}'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Teretana: ${session.gymName}'),
+              const SizedBox(height: 6),
+              Text('Termin: ${_formatDate(session.date)} ${session.startTime.substring(0, 5)} - ${session.endTime.substring(0, 5)}'),
+              const SizedBox(height: 6),
+              Text('Cijena: ${session.price.toStringAsFixed(0)} KM', style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 10),
+              const Text(
+                'Nakon uspješne uplate, grupni trening se računa kao aktivan pristup aplikaciji i bez klasične članarine.',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Otkaži')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Plati')),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      if (!mounted) return;
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+      final result = await PaymentService.createSessionCheckout(trainingSessionId: session.id);
+      final paymentId = result['paymentId'];
+      final sessionUrl = result['sessionUrl'];
+      final amount = result['amount'];
+
+      if (sessionUrl != null && sessionUrl.toString().isNotEmpty) {
+        final parsedPaymentId = paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0;
+        await PaymentService.markPendingPayment(parsedPaymentId);
+        await _refreshPendingPaymentsCount();
+        final launched = await _launchStripeCheckout(sessionUrl.toString());
+        if (!launched) {
+          throw 'Ne mogu otvoriti checkout URL.';
+        }
+
+        if (!mounted) return;
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Grupni trening "${session.title}" poslan je na Stripe checkout (${(amount as num).toStringAsFixed(0)} KM).',
+            ),
+          ),
+        );
+
+        await _trackPaymentStatus(parsedPaymentId, scaffoldMessenger);
+      } else {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(content: Text('Stripe checkout nije dostupan za grupni trening.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Greška pri plaćanju grupnog treninga: $e')),
+      );
+    }
+  }
+
+  Future<void> _openGymOffers(GymModel gym) async {
+    final gymPlans = _plans
+        .where((plan) => plan.gymId == gym.id && plan.isActive)
+        .toList()
+      ..sort((a, b) => a.durationDays.compareTo(b.durationDays));
+
+    final gymGroupSessions = _sessions
+        .where((session) => session.gymId == gym.id && session.isGroup && session.isActive)
+        .toList()
+      ..sort((a, b) {
+        final aDate = DateTime.tryParse('${a.date}T${a.startTime}') ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bDate = DateTime.tryParse('${b.date}T${b.startTime}') ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return aDate.compareTo(bDate);
+      });
+
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(gym.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text('${gym.cityName}, ${gym.countryName}', style: const TextStyle(color: Color(0xFF64748B))),
+                const SizedBox(height: 14),
+                const Text('Članarine', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 8),
+                if (gymPlans.isEmpty)
+                  const Text('Ova teretana trenutno nema aktivnih planova članarine.', style: TextStyle(color: Color(0xFF8A94A8)))
+                else
+                  ...gymPlans.map(
+                    (plan) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(plan.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                  Text('${plan.durationDays} dana', style: const TextStyle(color: Color(0xFF64748B))),
+                                ],
+                              ),
+                            ),
+                            Text('${plan.price.toStringAsFixed(0)} KM', style: const TextStyle(fontWeight: FontWeight.w800)),
+                            const SizedBox(width: 10),
+                            FilledButton(
+                              onPressed: () async {
+                                Navigator.pop(ctx);
+                                await _purchaseMembershipPlan(plan);
+                              },
+                              child: const Text('Kupi'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                const Text('Grupni treninzi', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 8),
+                if (gymGroupSessions.isEmpty)
+                  const Text('Ova teretana trenutno nema grupnih treninga za uplatu.', style: TextStyle(color: Color(0xFF8A94A8)))
+                else
+                  ...gymGroupSessions.map(
+                    (session) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFF),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(session.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                  Text(
+                                    '${_formatDate(session.date)} · ${session.startTime.substring(0, 5)} - ${session.endTime.substring(0, 5)}',
+                                    style: const TextStyle(color: Color(0xFF64748B)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text('${session.price.toStringAsFixed(0)} KM', style: const TextStyle(fontWeight: FontWeight.w800)),
+                            const SizedBox(width: 10),
+                            FilledButton(
+                              onPressed: () async {
+                                Navigator.pop(ctx);
+                                await _purchaseGroupTraining(session);
+                              },
+                              child: const Text('Plati'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Napomena: Uplata grupnog treninga omogućava pristup aplikaciji i bez klasične članarine.',
+                  style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _openEditProfileDialog(AuthProvider auth) async {
@@ -1423,6 +1665,15 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIndex: _selectedIndex,
         backgroundColor: Colors.white,
         onDestinationSelected: (index) {
+          final requiresMembership = index == 0 || index == 2;
+          if (requiresMembership && !_hasGymAccess) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Za Početnu i Napredak prvo odaberite teretanu i aktivirajte članarinu ili grupni trening.')),
+            );
+            setState(() => _selectedIndex = 1);
+            return;
+          }
+
           setState(() => _selectedIndex = index);
           if (index == 0 || index == 1 || index == 2) {
             _ensureTrainingDataLoaded();
@@ -1459,10 +1710,43 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHomeTab(BuildContext context, AuthResponse? user) {
+    if (!_hasGymAccess) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        children: [
+          _emptyStateCard(
+            title: 'Početna je dostupna nakon učlanjenja',
+            message: 'Odaberite teretanu i kupite članarinu ili grupni trening da otključate početnu stranicu vaše teretane.',
+            icon: Icons.lock_outline,
+            actionLabel: 'Idi na teretane',
+            onAction: () => setState(() => _selectedIndex = 1),
+          ),
+        ],
+      );
+    }
+
     final gymName = _activeMembership?.gymName ?? 'Iron Gym Sarajevo';
     final planName = _activeMembership?.planName ?? 'Bez aktivne članarine';
     final daysLeft = _activeMembership?.daysRemaining ?? 0;
-    final activePlans = _plans.where((plan) => plan.isActive).take(4).toList();
+    final currentGymName = _activeMembership?.gymName;
+    final scopedPlans = _plans.where((plan) {
+      if (!plan.isActive) return false;
+      if (currentGymName == null || currentGymName.isEmpty) return true;
+      return plan.gymName == currentGymName;
+    }).toList();
+
+    scopedPlans.sort((a, b) {
+      final byDuration = a.durationDays.compareTo(b.durationDays);
+      if (byDuration != 0) return byDuration;
+      return a.price.compareTo(b.price);
+    });
+
+    final byDuration = <int, MembershipPlanModel>{};
+    for (final plan in scopedPlans) {
+      byDuration.putIfAbsent(plan.durationDays, () => plan);
+    }
+    final activePlans = byDuration.values.take(4).toList();
     final groupSessions = _sessions.where((session) => session.isGroup && session.isActive).take(3).toList();
 
     String prettyTime(String value) => value.length >= 5 ? value.substring(0, 5) : value;
@@ -2219,6 +2503,8 @@ class _HomeScreenState extends State<HomeScreen> {
         status: gym.statusLabel,
         tags: tagsForGym(gym),
         accent: gym.isOpen ? const Color(0xFF3BB76A) : const Color(0xFFE76F6F),
+        onDetails: () => _openGymOffers(gym),
+        onJoin: () => _openGymOffers(gym),
       );
     }
 
@@ -3430,8 +3716,20 @@ class _GymCard extends StatelessWidget {
   final String status;
   final List<String> tags;
   final Color accent;
+  final VoidCallback onDetails;
+  final VoidCallback onJoin;
 
-  const _GymCard({required this.name, required this.city, required this.rating, required this.reviews, required this.status, required this.tags, required this.accent});
+  const _GymCard({
+    required this.name,
+    required this.city,
+    required this.rating,
+    required this.reviews,
+    required this.status,
+    required this.tags,
+    required this.accent,
+    required this.onDetails,
+    required this.onJoin,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -3493,7 +3791,7 @@ class _GymCard extends StatelessWidget {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () {},
+                  onPressed: onDetails,
                   child: const Text('Detalji'),
                 ),
               ),
@@ -3501,7 +3799,7 @@ class _GymCard extends StatelessWidget {
               Expanded(
                 child: FilledButton(
                   style: FilledButton.styleFrom(backgroundColor: const Color(0xFF657BE6)),
-                  onPressed: () {},
+                  onPressed: onJoin,
                   child: const Text('Učlani se'),
                 ),
               ),

@@ -35,8 +35,11 @@ public class StripePaymentSyncService(
     {
         var candidatePayments = await _context.Payments
             .Where(p => p.UserId == userId
-                && p.Type == PaymentType.Membership
-                && p.UserMembership == null
+                && (p.Type == PaymentType.Membership || p.Type == PaymentType.Session)
+                && (
+                    (p.Type == PaymentType.Membership && p.UserMembership == null) ||
+                    (p.Type == PaymentType.Session && p.SessionReservation == null)
+                )
                 && (p.Status == PaymentStatus.Pending || p.Status == PaymentStatus.Succeeded)
                 && p.CreatedAt >= DateTime.UtcNow.AddDays(-7))
             .OrderByDescending(p => p.CreatedAt)
@@ -115,9 +118,58 @@ public class StripePaymentSyncService(
             await _membershipService.RenewFromPaymentAsync(payment.Id, renewDto);
         }
 
+        if (payment.Type == PaymentType.Session &&
+            TryGetTrainingSessionId(metadata, out var trainingSessionId))
+        {
+            await EnsureSessionReservationAsync(payment, trainingSessionId, cancellationToken);
+        }
+
         payment.Status = PaymentStatus.Succeeded;
         payment.CompletedAt ??= DateTime.UtcNow;
         await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task EnsureSessionReservationAsync(Payment payment, int trainingSessionId, CancellationToken cancellationToken)
+    {
+        var existingByPayment = await _context.SessionReservations
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.PaymentId == payment.Id, cancellationToken);
+
+        if (existingByPayment is not null)
+        {
+            return;
+        }
+
+        var session = await _context.TrainingSessions
+            .Include(s => s.Reservations)
+            .FirstOrDefaultAsync(s => s.Id == trainingSessionId && s.IsActive, cancellationToken);
+
+        if (session is null)
+        {
+            _logger.LogWarning("Cannot create reservation for payment {PaymentId}: session {SessionId} not found.", payment.Id, trainingSessionId);
+            return;
+        }
+
+        if (session.Reservations.Any(r => r.UserId == payment.UserId && r.Status == ReservationStatus.Confirmed))
+        {
+            return;
+        }
+
+        var confirmedCount = session.Reservations.Count(r => r.Status == ReservationStatus.Confirmed);
+        if (confirmedCount >= session.MaxParticipants)
+        {
+            _logger.LogWarning("Cannot create reservation for payment {PaymentId}: session {SessionId} is full.", payment.Id, trainingSessionId);
+            return;
+        }
+
+        _context.SessionReservations.Add(new SessionReservation
+        {
+            UserId = payment.UserId,
+            TrainingSessionId = trainingSessionId,
+            PaymentId = payment.Id,
+            Status = ReservationStatus.Confirmed,
+            ReservedAt = DateTime.UtcNow,
+        });
     }
 
     private static bool TryBuildRenewMembershipDto(
@@ -147,5 +199,13 @@ public class StripePaymentSyncService(
         discountPercent = Math.Clamp(discountPercent, 0m, 100m);
         dto = new RenewMembershipDto(payment.UserId, planId, discountPercent);
         return true;
+    }
+
+    private static bool TryGetTrainingSessionId(IDictionary<string, string>? metadata, out int trainingSessionId)
+    {
+        trainingSessionId = 0;
+        return metadata is not null
+            && metadata.TryGetValue("trainingSessionId", out var sessionIdRaw)
+            && int.TryParse(sessionIdRaw, out trainingSessionId);
     }
 }

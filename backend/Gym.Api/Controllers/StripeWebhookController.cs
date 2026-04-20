@@ -102,6 +102,7 @@ public class StripeWebhookController : ControllerBase
         payment.StripePaymentIntentId = session.PaymentIntentId ?? payment.StripePaymentIntentId;
 
         await FulfillMembershipAsync(payment, session.Metadata, $"checkout session {session.Id}");
+        await FulfillSessionReservationAsync(payment, session.Metadata, $"checkout session {session.Id}");
 
         payment.Status = PaymentStatus.Succeeded;
         payment.CompletedAt ??= DateTime.UtcNow;
@@ -129,6 +130,7 @@ public class StripeWebhookController : ControllerBase
 
         payment.StripePaymentIntentId = paymentIntent.Id;
         await FulfillMembershipAsync(payment, paymentIntent.Metadata, $"payment intent {paymentIntent.Id}");
+        await FulfillSessionReservationAsync(payment, paymentIntent.Metadata, $"payment intent {paymentIntent.Id}");
         payment.Status = PaymentStatus.Succeeded;
         payment.CompletedAt ??= DateTime.UtcNow;
 
@@ -206,6 +208,74 @@ public class StripeWebhookController : ControllerBase
         }
 
         await _membershipService.RenewFromPaymentAsync(payment.Id, dto);
+    }
+
+    private async Task FulfillSessionReservationAsync(
+        Payment payment,
+        IDictionary<string, string>? metadata,
+        string source)
+    {
+        if (payment.Type != PaymentType.Session)
+        {
+            return;
+        }
+
+        var existingReservation = await _context.SessionReservations
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.PaymentId == payment.Id);
+
+        if (existingReservation is not null)
+        {
+            return;
+        }
+
+        if (metadata is null ||
+            !metadata.TryGetValue("trainingSessionId", out var sessionIdRaw) ||
+            !int.TryParse(sessionIdRaw, out var trainingSessionId))
+        {
+            _logger.LogWarning(
+                "Stripe session payment {PaymentId} from {Source} is missing trainingSessionId metadata.",
+                payment.Id,
+                source);
+            return;
+        }
+
+        var session = await _context.TrainingSessions
+            .Include(s => s.Reservations)
+            .FirstOrDefaultAsync(s => s.Id == trainingSessionId && s.IsActive);
+
+        if (session is null)
+        {
+            _logger.LogWarning(
+                "Training session {TrainingSessionId} for payment {PaymentId} was not found or inactive.",
+                trainingSessionId,
+                payment.Id);
+            return;
+        }
+
+        if (session.Reservations.Any(r => r.UserId == payment.UserId && r.Status == ReservationStatus.Confirmed))
+        {
+            return;
+        }
+
+        var confirmedCount = session.Reservations.Count(r => r.Status == ReservationStatus.Confirmed);
+        if (confirmedCount >= session.MaxParticipants)
+        {
+            _logger.LogWarning(
+                "Cannot fulfill payment {PaymentId}: training session {TrainingSessionId} is full.",
+                payment.Id,
+                trainingSessionId);
+            return;
+        }
+
+        _context.SessionReservations.Add(new SessionReservation
+        {
+            UserId = payment.UserId,
+            TrainingSessionId = trainingSessionId,
+            PaymentId = payment.Id,
+            Status = ReservationStatus.Confirmed,
+            ReservedAt = DateTime.UtcNow,
+        });
     }
 
     private static bool TryGetPaymentId(IDictionary<string, string>? metadata, out int paymentId)
