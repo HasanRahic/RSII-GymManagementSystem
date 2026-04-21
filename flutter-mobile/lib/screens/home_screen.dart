@@ -38,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _selectedCity = 'Svi gradovi';
   String? _selectedTrainingType;
   String _selectedShopCategory = 'Sve';
+  int? _selectedShopGymId;
   List<GymModel> _gyms = [];
   List<MembershipPlanModel> _plans = [];
   List<TrainingSessionModel> _sessions = [];
@@ -45,14 +46,16 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> _trainingTypes = [];
   final List<_ShopCartItem> _shopCart = [];
   final List<_ShopProduct> _shopProducts = const [
-    _ShopProduct(title: 'Whey Protein', price: 89, emoji: '🥤', category: 'Suplementi'),
-    _ShopProduct(title: 'Creatine Monohydrate', price: 49, emoji: '⚗️', category: 'Suplementi'),
-    _ShopProduct(title: 'BCAA Recovery', price: 39, emoji: '💧', category: 'Suplementi'),
-    _ShopProduct(title: 'FitTrack Majica', price: 35, emoji: '👕', category: 'Odjeća'),
-    _ShopProduct(title: 'Gym Shorts', price: 42, emoji: '🩳', category: 'Odjeća'),
-    _ShopProduct(title: 'Muške Rukavice', price: 29, emoji: '🧤', category: 'Oprema'),
-    _ShopProduct(title: 'Shaker 700ml', price: 15, emoji: '🧋', category: 'Oprema'),
-    _ShopProduct(title: 'Yoga Prostirka', price: 55, emoji: '🧘', category: 'Oprema'),
+    _ShopProduct(title: 'Whey Protein', price: 89, emoji: '🥤', category: 'Suplementi', gymIds: [1]),
+    _ShopProduct(title: 'Creatine Monohydrate', price: 49, emoji: '⚗️', category: 'Suplementi', gymIds: [1, 2]),
+    _ShopProduct(title: 'FitZone Majica', price: 35, emoji: '👕', category: 'Odjeća', gymIds: [1]),
+    _ShopProduct(title: 'Power Resistance Band', price: 24, emoji: '🧵', category: 'Oprema', gymIds: [2]),
+    _ShopProduct(title: 'BCAA Recovery', price: 39, emoji: '💧', category: 'Suplementi', gymIds: [2, 3]),
+    _ShopProduct(title: 'Gym Shorts', price: 42, emoji: '🩳', category: 'Odjeća', gymIds: [2, 3]),
+    _ShopProduct(title: 'Muške Rukavice', price: 29, emoji: '🧤', category: 'Oprema', gymIds: [1, 3]),
+    _ShopProduct(title: 'Shaker 700ml', price: 15, emoji: '🧋', category: 'Oprema', gymIds: [1, 2, 3]),
+    _ShopProduct(title: 'Yoga Prostirka', price: 55, emoji: '🧘', category: 'Oprema', gymIds: [3]),
+    _ShopProduct(title: 'IronGym Pojas', price: 47, emoji: '🦾', category: 'Oprema', gymIds: [3]),
   ];
   List<Map<String, dynamic>> _recentPayments = [];
   bool _loadingPayments = true;
@@ -65,6 +68,35 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _billingSortNewestFirst = true;
 
   bool get _hasGymAccess => _activeMembership != null || _hasActiveGroupTrainingAccess;
+
+  int? get _membershipGymId {
+    final gymName = _activeMembership?.gymName;
+    if (gymName == null || gymName.isEmpty) return null;
+    for (final gym in _gyms) {
+      if (gym.name == gymName) return gym.id;
+    }
+    return null;
+  }
+
+  int? get _effectiveShopGymId {
+    if (_selectedShopGymId != null && _gyms.any((g) => g.id == _selectedShopGymId)) {
+      return _selectedShopGymId;
+    }
+
+    final membershipGymId = _membershipGymId;
+    if (membershipGymId != null) return membershipGymId;
+    if (_reservedSessions.isNotEmpty) return _reservedSessions.first.gymId;
+    if (_gyms.isNotEmpty) return _gyms.first.id;
+    return null;
+  }
+
+  String get _effectiveShopGymName {
+    final gymId = _effectiveShopGymId;
+    if (gymId == null) return 'Odabrana teretana';
+    final found = _gyms.where((gym) => gym.id == gymId);
+    if (found.isNotEmpty) return found.first.name;
+    return 'Odabrana teretana';
+  }
 
   bool _isSucceededSessionPayment(Map<String, dynamic> payment) {
     final rawType = payment['type'];
@@ -173,6 +205,11 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _gyms = gyms;
         _plans = plans;
+        if (_selectedShopGymId == null) {
+          _selectedShopGymId = _membershipGymId ?? (gyms.isNotEmpty ? gyms.first.id : null);
+        } else if (!_gyms.any((g) => g.id == _selectedShopGymId)) {
+          _selectedShopGymId = gyms.isNotEmpty ? gyms.first.id : null;
+        }
       });
     } catch (_) {
       if (!mounted) return;
@@ -774,13 +811,19 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<String> get _shopCategories {
-    final categories = _shopProducts.map((p) => p.category).toSet().toList()..sort();
+    final categories = _filteredProductsByGym.map((p) => p.category).toSet().toList()..sort();
     return ['Sve', ...categories];
+  }
+
+  List<_ShopProduct> get _filteredProductsByGym {
+    final gymId = _effectiveShopGymId;
+    if (gymId == null) return _shopProducts;
+    return _shopProducts.where((product) => product.gymIds.contains(gymId)).toList();
   }
 
   List<_ShopProduct> get _filteredShopProducts {
     final query = _shopSearchCtrl.text.trim().toLowerCase();
-    return _shopProducts.where((product) {
+    return _filteredProductsByGym.where((product) {
       final categoryMatches = _selectedShopCategory == 'Sve' || product.category == _selectedShopCategory;
       final queryMatches = query.isEmpty ||
           product.title.toLowerCase().contains(query) ||
@@ -2150,6 +2193,44 @@ class _HomeScreenState extends State<HomeScreen> {
 
         const _SectionTitle(icon: '🛒', title: 'Shop'),
         const SizedBox(height: 10),
+        if (_gyms.isNotEmpty) ...[
+          Row(
+            children: [
+              const Icon(Icons.store_mall_directory_outlined, color: Color(0xFF64748B), size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Ponuda za teretanu: $_effectiveShopGymName',
+                  style: const TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 36,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _gyms.length,
+              separatorBuilder: (_, index) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final gym = _gyms[index];
+                final selected = _effectiveShopGymId == gym.id;
+                return ChoiceChip(
+                  label: Text(gym.name),
+                  selected: selected,
+                  onSelected: (_) {
+                    setState(() {
+                      _selectedShopGymId = gym.id;
+                      _selectedShopCategory = 'Sve';
+                    });
+                  },
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
         TextField(
           controller: _shopSearchCtrl,
           onChanged: (_) => setState(() {}),
@@ -2739,9 +2820,15 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final daysRemaining = _activeMembership?.daysRemaining ?? 0;
-    final reservedSessions = _reservedSessions;
+    final reservedSessions = _reservedSessions.where((s) => s.isGroup).toList();
     String shortDate(String value) => value.length >= 10 ? value.substring(0, 10) : value;
     String shortTime(String value) => value.length >= 5 ? value.substring(0, 5) : value;
+    String weekdayLabel(String value) {
+      final parsed = DateTime.tryParse(value);
+      if (parsed == null) return 'Dan nije poznat';
+      const labels = ['Pon', 'Uto', 'Sri', 'Čet', 'Pet', 'Sub', 'Ned'];
+      return labels[parsed.weekday - 1];
+    }
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -2779,7 +2866,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        const _SectionTitle(icon: '🏋️', title: 'Nadolazeći treninzi'),
+        const _SectionTitle(icon: '🏋️', title: 'Rezervisani grupni treninzi'),
         const SizedBox(height: 10),
         if (_loadingReservations)
           const Padding(
@@ -2797,7 +2884,8 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.only(bottom: 10),
               child: _ScheduleCard(
                 title: session.title,
-                schedule: '${shortDate(session.date)} · ${shortTime(session.startTime)} - ${shortTime(session.endTime)} · ${session.gymName}',
+                schedule: '${weekdayLabel(session.date)}, ${shortDate(session.date)} · ${shortTime(session.startTime)} - ${shortTime(session.endTime)}',
+                details: '${session.gymName} · Trener: ${session.trainerFullName}',
                 tag: session.isGroup ? 'GRUPNI' : 'LIČNI',
               ),
             ),
@@ -3619,12 +3707,14 @@ class _ShopProduct {
   final double price;
   final String emoji;
   final String category;
+  final List<int> gymIds;
 
   const _ShopProduct({
     required this.title,
     required this.price,
     required this.emoji,
     required this.category,
+    required this.gymIds,
   });
 }
 
@@ -3871,9 +3961,10 @@ class _SmallMetric extends StatelessWidget {
 class _ScheduleCard extends StatelessWidget {
   final String title;
   final String schedule;
+  final String? details;
   final String tag;
 
-  const _ScheduleCard({required this.title, required this.schedule, required this.tag});
+  const _ScheduleCard({required this.title, required this.schedule, required this.tag, this.details});
 
   @override
   Widget build(BuildContext context) {
@@ -3899,6 +3990,10 @@ class _ScheduleCard extends StatelessWidget {
                 Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
                 Text(schedule, style: const TextStyle(color: Color(0xFF7A8598))),
+                if (details != null) ...[
+                  const SizedBox(height: 3),
+                  Text(details!, style: const TextStyle(color: Color(0xFF51607A), fontWeight: FontWeight.w600)),
+                ],
               ],
             ),
           ),

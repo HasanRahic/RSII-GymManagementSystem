@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../core/constants.dart';
 import '../core/api_client.dart';
+import '../models/models.dart';
 import '../providers/auth_provider.dart';
+import '../services/api_services.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -21,8 +23,35 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordCtrl = TextEditingController();
   final _confirmPasswordCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
+  List<CityModel> _cities = const [];
+  int? _selectedCityId;
+  bool _loadingCities = true;
   bool _obscurePassword = true;
   bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCities();
+  }
+
+  Future<void> _loadCities() async {
+    try {
+      final cities = await ReferenceService.getCities();
+      if (!mounted) return;
+      setState(() {
+        _cities = cities;
+        if (cities.isNotEmpty) {
+          _selectedCityId = cities.first.id;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _cities = const []);
+    } finally {
+      if (mounted) setState(() => _loadingCities = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -48,6 +77,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             email: _emailCtrl.text.trim(),
             password: _passwordCtrl.text,
             phoneNumber: _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+        cityId: _selectedCityId,
           );
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
     } on ApiException catch (e) {
@@ -170,6 +200,33 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             prefixIcon: Icon(Icons.phone_outlined),
                             border: OutlineInputBorder(),
                           ),
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<int>(
+                          initialValue: _selectedCityId,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Grad',
+                            prefixIcon: Icon(Icons.location_city_outlined),
+                            border: OutlineInputBorder(),
+                          ),
+                          items: _cities
+                              .map(
+                                (city) => DropdownMenuItem<int>(
+                                  value: city.id,
+                                  child: Text(city.name),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: _loadingCities
+                              ? null
+                              : (value) => setState(() => _selectedCityId = value),
+                          validator: (value) {
+                            if (_loadingCities) return 'Učitavanje gradova...';
+                            if (_cities.isEmpty) return 'Nema dostupnih gradova.';
+                            if (value == null) return 'Odaberite grad.';
+                            return null;
+                          },
                         ),
                         const SizedBox(height: 12),
                         TextFormField(

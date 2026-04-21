@@ -63,6 +63,8 @@ public class MembershipService : IMembershipService
 
     public async Task<IEnumerable<UserMembershipDto>> GetUserMembershipsAsync(int userId)
     {
+        await ExpireEndedMembershipsAsync(userId);
+
         var memberships = await _context.UserMemberships
             .Include(m => m.MembershipPlan)
             .Include(m => m.Gym)
@@ -76,6 +78,8 @@ public class MembershipService : IMembershipService
 
     public async Task<UserMembershipDto?> GetActiveMembershipAsync(int userId)
     {
+        await ExpireEndedMembershipsAsync(userId);
+
         var m = await _context.UserMemberships
             .Include(m => m.MembershipPlan)
             .Include(m => m.Gym)
@@ -178,6 +182,28 @@ public class MembershipService : IMembershipService
 
     private static MembershipPlanDto ToPlanDto(MembershipPlan p) =>
         new(p.Id, p.Name, p.Description, p.DurationDays, p.Price, p.IsActive, p.GymId, p.Gym.Name);
+
+    private async Task ExpireEndedMembershipsAsync(int userId)
+    {
+        var now = DateTime.UtcNow;
+        var expiredMemberships = await _context.UserMemberships
+            .Where(m => m.UserId == userId
+                && m.Status == MembershipStatus.Active
+                && m.EndDate <= now)
+            .ToListAsync();
+
+        if (expiredMemberships.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var membership in expiredMemberships)
+        {
+            membership.Status = MembershipStatus.Expired;
+        }
+
+        await _context.SaveChangesAsync();
+    }
 
     private static UserMembershipDto ToMembershipDto(UserMembership m) => new(
         m.Id, m.UserId, $"{m.User.FirstName} {m.User.LastName}",

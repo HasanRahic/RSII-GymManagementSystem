@@ -56,8 +56,9 @@ class AuthProvider extends ChangeNotifier {
         'username': username,
         'password': password,
       });
-      _user = AuthResponse.fromJson(data);
-      await ApiClient.setToken(_user!.token);
+      final auth = AuthResponse.fromJson(data);
+      await ApiClient.setToken(auth.token);
+      await refreshMe();
     } on ApiException catch (e) {
       _error = e.message;
       rethrow;
@@ -95,8 +96,9 @@ class AuthProvider extends ChangeNotifier {
         'dateOfBirth': dateOfBirth?.toIso8601String(),
         'cityId': cityId,
       });
-      _user = AuthResponse.fromJson(data);
-      await ApiClient.setToken(_user!.token);
+      final auth = AuthResponse.fromJson(data);
+      await ApiClient.setToken(auth.token);
+      await refreshMe();
     } on ApiException catch (e) {
       _error = e.message;
       rethrow;
@@ -144,15 +146,17 @@ class AuthProvider extends ChangeNotifier {
       throw ApiException(401, 'Niste prijavljeni.');
     }
 
+    final current = await ApiClient.get('/users/me');
+
     await ApiClient.put('/users/${_user!.id}', {
       'firstName': firstName,
       'lastName': lastName,
       'email': email,
       'phoneNumber': phoneNumber,
-      'dateOfBirth': null,
-      'cityId': null,
-      'primaryGymId': null,
-      'profileImageUrl': null,
+      'dateOfBirth': current['dateOfBirth'],
+      'cityId': current['cityId'],
+      'primaryGymId': current['primaryGymId'],
+      'profileImageUrl': current['profileImageUrl'],
     });
 
     await refreshMe();
