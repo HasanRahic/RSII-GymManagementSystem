@@ -15,6 +15,7 @@ public static class DbSeeder
 
         if (await context.Countries.AnyAsync())
         {
+            await EnsureGymCatalogAsync(context);
             await EnsureMembershipPlanCatalogAsync(context);
             return;
         }
@@ -80,7 +81,23 @@ public static class DbSeeder
             PhoneNumber = "051-333-444", Email = "irongym@gym.ba",
             Latitude = 44.7722, Longitude = 17.1910
         };
-        context.Gyms.AddRange(gym1, gym2, gym3);
+        var gym4 = new GymFacility
+        {
+            Name = "Arena Mostar", Address = "Kneza Domagoja 9", CityId = mostar.Id,
+            OpenTime = new TimeOnly(6, 0), CloseTime = new TimeOnly(23, 0),
+            Capacity = 70, Status = GymStatus.Open,
+            PhoneNumber = "036-555-777", Email = "arena@gym.ba",
+            Latitude = 43.3400, Longitude = 17.8120
+        };
+        var gym5 = new GymFacility
+        {
+            Name = "Titan Zagreb", Address = "Savska cesta 40", CityId = zagreb.Id,
+            OpenTime = new TimeOnly(5, 30), CloseTime = new TimeOnly(23, 30),
+            Capacity = 120, Status = GymStatus.Open,
+            PhoneNumber = "+385-1-777-888", Email = "titan@gym.hr",
+            Latitude = 45.8040, Longitude = 15.9670
+        };
+        context.Gyms.AddRange(gym1, gym2, gym3, gym4, gym5);
         await context.SaveChangesAsync();
 
         // Postavi primarnu teretanu
@@ -104,6 +121,14 @@ public static class DbSeeder
             new() { Name = "Mjesečna",    DurationDays = 30,  Price = 38m,  GymId = gym3.Id },
             new() { Name = "Polugodišnja", DurationDays = 180, Price = 200m, GymId = gym3.Id },
             new() { Name = "Godišnja",    DurationDays = 365, Price = 360m, GymId = gym3.Id },
+            new() { Name = "Mjesečna",    DurationDays = 30,  Price = 37m,  GymId = gym4.Id },
+            new() { Name = "Tromjesečna", DurationDays = 90,  Price = 102m, GymId = gym4.Id },
+            new() { Name = "Polugodišnja", DurationDays = 180, Price = 195m, GymId = gym4.Id },
+            new() { Name = "Godišnja",    DurationDays = 365, Price = 350m, GymId = gym4.Id },
+            new() { Name = "Mjesečna",    DurationDays = 30,  Price = 45m,  GymId = gym5.Id },
+            new() { Name = "Tromjesečna", DurationDays = 90,  Price = 125m, GymId = gym5.Id },
+            new() { Name = "Polugodišnja", DurationDays = 180, Price = 235m, GymId = gym5.Id },
+            new() { Name = "Godišnja",    DurationDays = 365, Price = 420m, GymId = gym5.Id },
         };
         context.MembershipPlans.AddRange(plans);
         await context.SaveChangesAsync();
@@ -235,11 +260,68 @@ public static class DbSeeder
         await context.SaveChangesAsync();
     }
 
+    private static async Task EnsureGymCatalogAsync(GymDbContext context)
+    {
+        var cities = await context.Cities.AsNoTracking().ToListAsync();
+
+        var mostarId = cities.FirstOrDefault(c => c.Name == "Mostar")?.Id;
+        var zagrebId = cities.FirstOrDefault(c => c.Name == "Zagreb")?.Id;
+
+        var targetGyms = new List<GymFacility>();
+
+        if (mostarId.HasValue)
+        {
+            targetGyms.Add(new GymFacility
+            {
+                Name = "Arena Mostar",
+                Address = "Kneza Domagoja 9",
+                CityId = mostarId.Value,
+                OpenTime = new TimeOnly(6, 0),
+                CloseTime = new TimeOnly(23, 0),
+                Capacity = 70,
+                Status = GymStatus.Open,
+                PhoneNumber = "036-555-777",
+                Email = "arena@gym.ba",
+                Latitude = 43.3400,
+                Longitude = 17.8120,
+            });
+        }
+
+        if (zagrebId.HasValue)
+        {
+            targetGyms.Add(new GymFacility
+            {
+                Name = "Titan Zagreb",
+                Address = "Savska cesta 40",
+                CityId = zagrebId.Value,
+                OpenTime = new TimeOnly(5, 30),
+                CloseTime = new TimeOnly(23, 30),
+                Capacity = 120,
+                Status = GymStatus.Open,
+                PhoneNumber = "+385-1-777-888",
+                Email = "titan@gym.hr",
+                Latitude = 45.8040,
+                Longitude = 15.9670,
+            });
+        }
+
+        foreach (var gym in targetGyms)
+        {
+            var exists = await context.Gyms.AnyAsync(g => g.Name == gym.Name);
+            if (!exists)
+            {
+                context.Gyms.Add(gym);
+            }
+        }
+
+        await context.SaveChangesAsync();
+    }
+
     private static async Task EnsureMembershipPlanCatalogAsync(GymDbContext context)
     {
         var gyms = await context.Gyms
             .AsNoTracking()
-            .Select(g => g.Id)
+            .Select(g => new { g.Id, g.Name })
             .ToListAsync();
 
         if (gyms.Count == 0)
@@ -247,19 +329,25 @@ public static class DbSeeder
             return;
         }
 
-        var targetPlans = new List<(int GymId, string Name, int DurationDays, decimal Price)>
+        var targetPlans = new List<(string GymName, string Name, int DurationDays, decimal Price)>
         {
-            (gyms.ElementAtOrDefault(0), "Polugodišnja", 180, 210m),
-            (gyms.ElementAtOrDefault(1), "Polugodišnja", 180, 190m),
-            (gyms.ElementAtOrDefault(2), "Polugodišnja", 180, 200m),
-        }
-        .Where(p => p.GymId > 0)
-        .ToList();
+            ("FitZone Sarajevo", "Polugodišnja", 180, 210m),
+            ("PowerHouse Mostar", "Polugodišnja", 180, 190m),
+            ("IronGym Banja Luka", "Polugodišnja", 180, 200m),
+            ("Arena Mostar", "Polugodišnja", 180, 195m),
+            ("Titan Zagreb", "Polugodišnja", 180, 235m),
+        };
 
         foreach (var target in targetPlans)
         {
+            var gymId = gyms.FirstOrDefault(g => g.Name == target.GymName)?.Id;
+            if (!gymId.HasValue)
+            {
+                continue;
+            }
+
             var exists = await context.MembershipPlans.AnyAsync(p =>
-                p.GymId == target.GymId &&
+                p.GymId == gymId.Value &&
                 p.DurationDays == target.DurationDays &&
                 p.IsActive);
 
@@ -270,7 +358,7 @@ public static class DbSeeder
                     Name = target.Name,
                     DurationDays = target.DurationDays,
                     Price = target.Price,
-                    GymId = target.GymId,
+                    GymId = gymId.Value,
                     IsActive = true,
                 });
             }

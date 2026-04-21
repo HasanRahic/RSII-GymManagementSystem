@@ -64,6 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loadingReservations = true;
   final Set<int> _reservedSessionIds = <int>{};
   final Set<int> _reservationBusyIds = <int>{};
+  final List<_CustomTrainingEntry> _customTrainings = [];
   String _billingTypeFilter = 'Sve';
   bool _billingSortNewestFirst = true;
 
@@ -96,6 +97,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final found = _gyms.where((gym) => gym.id == gymId);
     if (found.isNotEmpty) return found.first.name;
     return 'Odabrana teretana';
+  }
+
+  List<_CustomTrainingEntry> get _activeCustomTrainings =>
+      _customTrainings.where((t) => !t.completed).toList();
+
+  List<_CustomTrainingEntry> get _completedCustomTrainings {
+    final items = _customTrainings.where((t) => t.completed).toList();
+    items.sort((a, b) => (b.completedAt ?? b.createdAt).compareTo(a.completedAt ?? a.createdAt));
+    return items;
   }
 
   bool _isSucceededSessionPayment(Map<String, dynamic> payment) {
@@ -1647,6 +1657,145 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  String _formatDateTime(DateTime value) {
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final year = value.year.toString();
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '$day.$month.$year $hour:$minute';
+  }
+
+  Future<void> _openAddTrainingDialog() async {
+    final formKey = GlobalKey<FormState>();
+    final nameCtrl = TextEditingController();
+    final weightCtrl = TextEditingController();
+    final repsCtrl = TextEditingController();
+    final detailsCtrl = TextEditingController();
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Dodaj novi trening'),
+        content: SizedBox(
+          width: 460,
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextFormField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Naziv treninga',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) => (value == null || value.trim().isEmpty)
+                      ? 'Unesite naziv treninga.'
+                      : null,
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: weightCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Kilaža (kg)',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) return 'Unesite kilažu.';
+                          return double.tryParse(value.replaceAll(',', '.')) == null
+                              ? 'Neispravan broj.'
+                              : null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextFormField(
+                        controller: repsCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Ponavljanja',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) return 'Unesite ponavljanja.';
+                          return int.tryParse(value) == null ? 'Neispravan broj.' : null;
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: detailsCtrl,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Detalji treninga',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) => (value == null || value.trim().isEmpty)
+                      ? 'Dodajte detalje treninga.'
+                      : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Otkaži')),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState?.validate() != true) return;
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('Sačuvaj trening'),
+          ),
+        ],
+      ),
+    );
+
+    if (saved == true) {
+      setState(() {
+        _customTrainings.add(
+          _CustomTrainingEntry(
+            id: DateTime.now().microsecondsSinceEpoch,
+            name: nameCtrl.text.trim(),
+            weightKg: double.parse(weightCtrl.text.trim().replaceAll(',', '.')),
+            reps: int.parse(repsCtrl.text.trim()),
+            details: detailsCtrl.text.trim(),
+            createdAt: DateTime.now(),
+          ),
+        );
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Novi trening je dodan u Napredak.')),
+      );
+    }
+  }
+
+  void _completeCustomTraining(_CustomTrainingEntry entry) {
+    setState(() {
+      final idx = _customTrainings.indexWhere((t) => t.id == entry.id);
+      if (idx == -1) return;
+      _customTrainings[idx] = _customTrainings[idx].copyWith(
+        completed: true,
+        completedAt: DateTime.now(),
+      );
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Trening "${entry.name}" je prebačen u historiju.')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -2892,50 +3041,51 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (ctx) => const CheckInScreen()),
-          ),
+          onPressed: _openAddTrainingDialog,
           icon: const Icon(Icons.add),
           label: const Text('Dodaj novi trening'),
         ),
         const SizedBox(height: 18),
-        const _SectionTitle(icon: '📊', title: 'Statistika dolazaka'),
+        const _SectionTitle(icon: '🧠', title: 'Planirani treninzi'),
         const SizedBox(height: 10),
-        _TopCard(
-          title: 'Decembar 2025',
-          subtitle: 'Plan i ostvarenje',
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(child: _SmallMetric(title: 'Planirano', value: '12', subtitle: 'za ovaj mjesec')),
-                  const SizedBox(width: 12),
-                  Expanded(child: _SmallMetric(title: 'Ostvareno', value: '10', subtitle: 'do sada')),
-                ],
+        if (_activeCustomTrainings.isEmpty)
+          const Text(
+            'Nemate ručno dodanih treninga. Kliknite "Dodaj novi trening" da kreirate plan.',
+            style: TextStyle(color: Color(0xFF8A94A8)),
+          )
+        else
+          ..._activeCustomTrainings.map(
+            (training) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _CustomTrainingCard(
+                title: training.name,
+                summary: '${training.weightKg.toStringAsFixed(1)} kg · ${training.reps} ponavljanja',
+                details: training.details,
+                createdAt: _formatDateTime(training.createdAt),
+                onComplete: () => _completeCustomTraining(training),
               ),
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  minHeight: 8,
-                  value: 10 / 12,
-                  backgroundColor: const Color(0xFFD9E2F2),
-                  valueColor: const AlwaysStoppedAnimation(Color(0xFF3BB76A)),
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text('Odlično! Ostalo ti je još samo 2 treninga do mjesečnog cilja.'),
-            ],
+            ),
           ),
-        ),
         const SizedBox(height: 18),
         const _SectionTitle(icon: '🗓️', title: 'Historija treninga'),
         const SizedBox(height: 10),
-        const _HistoryRow(date: '08.12.2025', value: '75 kg', delta: '0.5 kg'),
-        const _HistoryRow(date: '01.12.2025', value: '75.5 kg', delta: '0.8 kg'),
-        const _HistoryRow(date: '24.11.2025', value: '76.3 kg', delta: '0.3 kg'),
-        const _HistoryRow(date: '17.11.2025', value: '76.6 kg', delta: '0.4 kg'),
+        if (_completedCustomTrainings.isEmpty)
+          const Text(
+            'Historija treninga je prazna. Označite trening kao završen da se pojavi ovdje.',
+            style: TextStyle(color: Color(0xFF8A94A8)),
+          )
+        else
+          ..._completedCustomTrainings.map(
+            (training) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _TrainingHistoryCard(
+                title: training.name,
+                metrics: '${training.weightKg.toStringAsFixed(1)} kg · ${training.reps} ponavljanja',
+                details: training.details,
+                completedAt: _formatDateTime(training.completedAt ?? training.createdAt),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -4008,34 +4158,135 @@ class _ScheduleCard extends StatelessWidget {
   }
 }
 
-class _HistoryRow extends StatelessWidget {
-  final String date;
-  final String value;
-  final String delta;
+class _CustomTrainingCard extends StatelessWidget {
+  final String title;
+  final String summary;
+  final String details;
+  final String createdAt;
+  final VoidCallback onComplete;
 
-  const _HistoryRow({required this.date, required this.value, required this.delta});
+  const _CustomTrainingCard({
+    required this.title,
+    required this.summary,
+    required this.details,
+    required this.createdAt,
+    required this.onComplete,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
-      child: Row(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 4),
-                Text(date, style: const TextStyle(color: Color(0xFF8A94A8))),
-              ],
-            ),
+          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Text(summary, style: const TextStyle(color: Color(0xFF51607A), fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Text(details, style: const TextStyle(color: Color(0xFF64748B))),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Dodano: $createdAt',
+                  style: const TextStyle(color: Color(0xFF8A94A8), fontSize: 12),
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: onComplete,
+                icon: const Icon(Icons.check_circle_outline),
+                label: const Text('Završi'),
+              ),
+            ],
           ),
-          Text(delta, style: const TextStyle(color: Color(0xFFE07D7D), fontWeight: FontWeight.w700)),
         ],
       ),
+    );
+  }
+}
+
+class _TrainingHistoryCard extends StatelessWidget {
+  final String title;
+  final String metrics;
+  final String details;
+  final String completedAt;
+
+  const _TrainingHistoryCard({
+    required this.title,
+    required this.metrics,
+    required this.details,
+    required this.completedAt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFDCE4F2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Text(metrics, style: const TextStyle(color: Color(0xFF51607A), fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Text(details, style: const TextStyle(color: Color(0xFF64748B))),
+          const SizedBox(height: 8),
+          Text(
+            'Završeno: $completedAt',
+            style: const TextStyle(color: Color(0xFF8A94A8), fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomTrainingEntry {
+  final int id;
+  final String name;
+  final double weightKg;
+  final int reps;
+  final String details;
+  final DateTime createdAt;
+  final bool completed;
+  final DateTime? completedAt;
+
+  const _CustomTrainingEntry({
+    required this.id,
+    required this.name,
+    required this.weightKg,
+    required this.reps,
+    required this.details,
+    required this.createdAt,
+    this.completed = false,
+    this.completedAt,
+  });
+
+  _CustomTrainingEntry copyWith({
+    bool? completed,
+    DateTime? completedAt,
+  }) {
+    return _CustomTrainingEntry(
+      id: id,
+      name: name,
+      weightKg: weightKg,
+      reps: reps,
+      details: details,
+      createdAt: createdAt,
+      completed: completed ?? this.completed,
+      completedAt: completedAt ?? this.completedAt,
     );
   }
 }
