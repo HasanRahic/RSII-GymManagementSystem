@@ -19,7 +19,8 @@ public record CreateCheckoutSessionDto(
     PaymentType Type,
     int? MembershipPlanId,
     int? TrainingSessionId,
-    decimal DiscountPercent
+    decimal DiscountPercent,
+    int? SessionDurationDays
 );
 
 public record CheckoutSessionResultDto(
@@ -65,7 +66,9 @@ public record PaymentListItemDto(
     decimal Amount,
     string Currency,
     DateTime CreatedAt,
-    DateTime? CompletedAt
+    DateTime? CompletedAt,
+    int? SessionAccessDays,
+    DateTime? SessionAccessUntil
 );
 
 // Reference DTOs

@@ -126,6 +126,7 @@ public class StripePaymentSyncService(
 
         payment.Status = PaymentStatus.Succeeded;
         payment.CompletedAt ??= DateTime.UtcNow;
+        ApplySessionAccessWindow(payment, metadata);
         await _context.SaveChangesAsync(cancellationToken);
     }
 
@@ -207,5 +208,30 @@ public class StripePaymentSyncService(
         return metadata is not null
             && metadata.TryGetValue("trainingSessionId", out var sessionIdRaw)
             && int.TryParse(sessionIdRaw, out trainingSessionId);
+    }
+
+    private static void ApplySessionAccessWindow(Payment payment, IDictionary<string, string>? metadata)
+    {
+        if (payment.Type != PaymentType.Session)
+        {
+            return;
+        }
+
+        if (!payment.SessionAccessDays.HasValue &&
+            metadata is not null &&
+            metadata.TryGetValue("sessionDurationDays", out var durationRaw) &&
+            int.TryParse(durationRaw, out var metadataDays))
+        {
+            payment.SessionAccessDays = metadataDays;
+        }
+
+        var durationDays = payment.SessionAccessDays;
+        if (!durationDays.HasValue || durationDays.Value <= 0)
+        {
+            return;
+        }
+
+        var start = payment.CompletedAt ?? DateTime.UtcNow;
+        payment.SessionAccessUntil = start.AddDays(durationDays.Value);
     }
 }

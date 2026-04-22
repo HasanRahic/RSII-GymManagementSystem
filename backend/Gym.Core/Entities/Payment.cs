@@ -13,6 +13,8 @@ public class Payment
     public string? StripeSessionId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
+    public int? SessionAccessDays { get; set; }
+    public DateTime? SessionAccessUntil { get; set; }
 
     public int UserId { get; set; }
     public User User { get; set; } = null!;

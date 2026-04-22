@@ -106,6 +106,7 @@ public class StripeWebhookController : ControllerBase
 
         payment.Status = PaymentStatus.Succeeded;
         payment.CompletedAt ??= DateTime.UtcNow;
+        ApplySessionAccessWindow(payment, session.Metadata);
 
         await _context.SaveChangesAsync();
     }
@@ -133,6 +134,7 @@ public class StripeWebhookController : ControllerBase
         await FulfillSessionReservationAsync(payment, paymentIntent.Metadata, $"payment intent {paymentIntent.Id}");
         payment.Status = PaymentStatus.Succeeded;
         payment.CompletedAt ??= DateTime.UtcNow;
+        ApplySessionAccessWindow(payment, paymentIntent.Metadata);
 
         await _context.SaveChangesAsync();
     }
@@ -313,5 +315,30 @@ public class StripeWebhookController : ControllerBase
         discountPercent = Math.Clamp(discountPercent, 0m, 100m);
         dto = new RenewMembershipDto(payment.UserId, planId, discountPercent);
         return true;
+    }
+
+    private static void ApplySessionAccessWindow(Payment payment, IDictionary<string, string>? metadata)
+    {
+        if (payment.Type != PaymentType.Session)
+        {
+            return;
+        }
+
+        if (!payment.SessionAccessDays.HasValue &&
+            metadata is not null &&
+            metadata.TryGetValue("sessionDurationDays", out var durationRaw) &&
+            int.TryParse(durationRaw, out var metadataDays))
+        {
+            payment.SessionAccessDays = metadataDays;
+        }
+
+        var durationDays = payment.SessionAccessDays;
+        if (!durationDays.HasValue || durationDays.Value <= 0)
+        {
+            return;
+        }
+
+        var start = payment.CompletedAt ?? DateTime.UtcNow;
+        payment.SessionAccessUntil = start.AddDays(durationDays.Value);
     }
 }

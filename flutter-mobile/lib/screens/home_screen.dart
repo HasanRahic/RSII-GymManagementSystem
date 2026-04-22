@@ -61,12 +61,14 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loadingPayments = true;
   int _pendingPaymentsCount = 0;
   Timer? _pendingPaymentsTimer;
-  bool _loadingReservations = true;
   final Set<int> _reservedSessionIds = <int>{};
   final Set<int> _reservationBusyIds = <int>{};
+  bool _loadingPaidGroupSchedule = true;
+  List<TrainingSessionModel> _paidGroupSchedule = [];
   final List<_CustomTrainingEntry> _customTrainings = [];
   String _billingTypeFilter = 'Sve';
   bool _billingSortNewestFirst = true;
+  static const List<int> _sessionDurationOptions = [30, 90, 180, 365];
 
   bool get _hasGymAccess => _activeMembership != null || _hasActiveGroupTrainingAccess;
 
@@ -115,7 +117,22 @@ class _HomeScreenState extends State<HomeScreen> {
     final statusText = '$rawStatus'.toLowerCase();
     final isSession = rawType == 1 || typeText == 'session';
     final isSucceeded = rawStatus == 1 || statusText == 'succeeded';
-    return isSession && isSucceeded;
+    if (!isSession || !isSucceeded) {
+      return false;
+    }
+
+    final accessUntil = DateTime.tryParse('${payment['sessionAccessUntil'] ?? ''}');
+    if (accessUntil != null) {
+      return accessUntil.isAfter(DateTime.now().toUtc());
+    }
+
+    final completedAt = DateTime.tryParse('${payment['completedAt'] ?? ''}');
+    final durationDays = int.tryParse('${payment['sessionAccessDays'] ?? ''}') ?? 0;
+    if (completedAt != null && durationDays > 0) {
+      return completedAt.add(Duration(days: durationDays)).isAfter(DateTime.now().toUtc());
+    }
+
+    return false;
   }
 
   @override
@@ -189,11 +206,19 @@ class _HomeScreenState extends State<HomeScreen> {
           _membersInGym = fallbackCount;
         }
       });
+
+      if (hasGroupTrainingAccess) {
+        await _loadPaidGroupSchedule();
+      } else {
+        if (!mounted) return;
+        setState(() => _paidGroupSchedule = []);
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _activeMembership = null;
         _hasActiveGroupTrainingAccess = false;
+        _paidGroupSchedule = [];
       });
     } finally {
       if (mounted) setState(() => _loadingMembership = false);
@@ -287,6 +312,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (_selectedIndex == 0 || _selectedIndex == 1 || _selectedIndex == 2) {
       await _ensureTrainingDataLoaded(forceReload: true);
+      await _loadPaidGroupSchedule();
     }
 
     if (_selectedIndex == 3) {
@@ -299,8 +325,22 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadPayments();
     }
 
-    if (forceReload || _reservedSessionIds.isEmpty) {
-      await _loadReservations();
+    if (forceReload || _paidGroupSchedule.isEmpty) {
+      await _loadPaidGroupSchedule();
+    }
+  }
+
+  Future<void> _loadPaidGroupSchedule() async {
+    setState(() => _loadingPaidGroupSchedule = true);
+    try {
+      final schedule = await TrainingSessionService.getMyPaidGroupSchedule();
+      if (!mounted) return;
+      setState(() => _paidGroupSchedule = schedule);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _paidGroupSchedule = []);
+    } finally {
+      if (mounted) setState(() => _loadingPaidGroupSchedule = false);
     }
   }
 
@@ -352,24 +392,6 @@ class _HomeScreenState extends State<HomeScreen> {
       final message = 'Ažurirano stanje uplata: uspješno $confirmed, neuspješno $failed.';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       await _loadPayments();
-    }
-  }
-
-  Future<void> _loadReservations() async {
-    setState(() => _loadingReservations = true);
-    try {
-      final reservations = await TrainingSessionService.getMyReservations();
-      if (!mounted) return;
-      setState(() {
-        _reservedSessionIds
-          ..clear()
-          ..addAll(reservations.map((s) => s.id));
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _reservedSessionIds.clear());
-    } finally {
-      if (mounted) setState(() => _loadingReservations = false);
     }
   }
 
@@ -623,6 +645,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final status = _paymentStatusLabel(payment['status']);
     final createdAt = _formatIsoDate(payment['createdAt']);
     final completedAt = _formatIsoDate(payment['completedAt']);
+    final sessionAccessDays = int.tryParse('${payment['sessionAccessDays'] ?? ''}');
+    final sessionAccessUntil = _formatIsoDate(payment['sessionAccessUntil']);
 
     showDialog<void>(
       context: context,
@@ -639,6 +663,10 @@ class _HomeScreenState extends State<HomeScreen> {
               _detailLine('Iznos', '${amount.toStringAsFixed(0)} $currency'),
               _detailLine('Kreirano', createdAt),
               _detailLine('Završeno', completedAt),
+              if (sessionAccessDays != null && sessionAccessDays > 0)
+                _detailLine('Trajanje pristupa', '$sessionAccessDays dana'),
+              if (sessionAccessDays != null && sessionAccessDays > 0)
+                _detailLine('Pristup do', sessionAccessUntil),
               _detailLine('ID', _paymentReference(payment)),
             ],
           ),
@@ -1125,6 +1153,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await PaymentService.clearPendingPayment(paymentId);
       await _loadMembership();
       await _loadPayments();
+      await _loadPaidGroupSchedule();
       await _refreshPendingPaymentsCount();
       scaffoldMessenger.showSnackBar(
         SnackBar(content: Text('Uplata #$paymentId je uspješno potvrđena.')),
@@ -1241,33 +1270,63 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _purchaseGroupTraining(TrainingSessionModel session) async {
+  Future<void> _purchaseGroupTraining(TrainingSessionModel session, {List<String> weekdays = const []}) async {
+    int selectedDurationDays = 30;
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Uplati grupni trening: ${session.title}'),
-        content: SizedBox(
-          width: 420,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Teretana: ${session.gymName}'),
-              const SizedBox(height: 6),
-              Text('Termin: ${_formatDate(session.date)} ${session.startTime.substring(0, 5)} - ${session.endTime.substring(0, 5)}'),
-              const SizedBox(height: 6),
-              Text('Cijena: ${session.price.toStringAsFixed(0)} KM', style: const TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 10),
-              const Text(
-                'Nakon uspješne uplate, grupni trening se računa kao aktivan pristup aplikaciji i bez klasične članarine.',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final selectedPrice = _sessionPriceForDuration(session.price, selectedDurationDays);
+          return AlertDialog(
+            title: Text('Uplati grupni trening: ${session.title}'),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Teretana: ${session.gymName}'),
+                  const SizedBox(height: 6),
+                  Text('Termin: ${session.startTime.substring(0, 5)} - ${session.endTime.substring(0, 5)}'),
+                  if (weekdays.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text('Raspored: ${weekdays.join(' / ')}'),
+                  ],
+                  const SizedBox(height: 12),
+                  const Text('Odaberi trajanje grupne članarine:'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _sessionDurationOptions
+                        .map(
+                          (days) => ChoiceChip(
+                            label: Text(_durationLabel(days)),
+                            selected: selectedDurationDays == days,
+                            onSelected: (_) => setLocal(() => selectedDurationDays = days),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Cijena: ${selectedPrice.toStringAsFixed(0)} KM',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Nakon uspješne uplate, grupni trening vrijedi kao članarina za odabrani period.',
+                  ),
+                ],
               ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Otkaži')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Plati')),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Otkaži')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Plati')),
-        ],
+          );
+        },
       ),
     );
 
@@ -1276,7 +1335,10 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       if (!mounted) return;
       final scaffoldMessenger = ScaffoldMessenger.of(context);
-      final result = await PaymentService.createSessionCheckout(trainingSessionId: session.id);
+      final result = await PaymentService.createSessionCheckout(
+        trainingSessionId: session.id,
+        sessionDurationDays: selectedDurationDays,
+      );
       final paymentId = result['paymentId'];
       final sessionUrl = result['sessionUrl'];
       final amount = result['amount'];
@@ -1294,7 +1356,7 @@ class _HomeScreenState extends State<HomeScreen> {
         scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text(
-              'Grupni trening "${session.title}" poslan je na Stripe checkout (${(amount as num).toStringAsFixed(0)} KM).',
+              'Grupni trening "${session.title}" (${_durationLabel(selectedDurationDays)}) poslan je na Stripe checkout (${(amount as num).toStringAsFixed(0)} KM).',
             ),
           ),
         );
@@ -1319,14 +1381,9 @@ class _HomeScreenState extends State<HomeScreen> {
         .toList()
       ..sort((a, b) => a.durationDays.compareTo(b.durationDays));
 
-    final gymGroupSessions = _sessions
-        .where((session) => session.gymId == gym.id && session.isGroup && session.isActive)
-        .toList()
-      ..sort((a, b) {
-        final aDate = DateTime.tryParse('${a.date}T${a.startTime}') ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bDate = DateTime.tryParse('${b.date}T${b.startTime}') ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return aDate.compareTo(bDate);
-      });
+    final gymGroupOffers = _buildSessionOffers(
+      _sessions.where((session) => session.gymId == gym.id).toList(),
+    );
 
     if (!mounted) return;
 
@@ -1388,11 +1445,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 12),
                 const Text('Grupni treninzi', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 8),
-                if (gymGroupSessions.isEmpty)
+                if (gymGroupOffers.isEmpty)
                   const Text('Ova teretana trenutno nema grupnih treninga za uplatu.', style: TextStyle(color: Color(0xFF8A94A8)))
                 else
-                  ...gymGroupSessions.map(
-                    (session) => Padding(
+                  ...gymGroupOffers.map(
+                    (offer) => Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Container(
                         padding: const EdgeInsets.all(12),
@@ -1408,20 +1465,28 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(session.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                  Text(offer.representative.title, style: const TextStyle(fontWeight: FontWeight.w700)),
                                   Text(
-                                    '${_formatDate(session.date)} · ${session.startTime.substring(0, 5)} - ${session.endTime.substring(0, 5)}',
+                                    '${offer.representative.startTime.substring(0, 5)} - ${offer.representative.endTime.substring(0, 5)}',
                                     style: const TextStyle(color: Color(0xFF64748B)),
                                   ),
+                                  if (offer.weekdays.isNotEmpty)
+                                    Text(
+                                      'Raspored: ${offer.weekdays.join(' / ')}',
+                                      style: const TextStyle(color: Color(0xFF64748B)),
+                                    ),
                                 ],
                               ),
                             ),
-                            Text('${session.price.toStringAsFixed(0)} KM', style: const TextStyle(fontWeight: FontWeight.w800)),
+                            Text('od ${offer.representative.price.toStringAsFixed(0)} KM/mj', style: const TextStyle(fontWeight: FontWeight.w800)),
                             const SizedBox(width: 10),
                             FilledButton(
                               onPressed: () async {
                                 Navigator.pop(ctx);
-                                await _purchaseGroupTraining(session);
+                                await _purchaseGroupTraining(
+                                  offer.representative,
+                                  weekdays: offer.weekdays,
+                                );
                               },
                               child: const Text('Plati'),
                             ),
@@ -1666,6 +1731,76 @@ class _HomeScreenState extends State<HomeScreen> {
     return '$day.$month.$year $hour:$minute';
   }
 
+  String _weekdayShortFromDate(String dateValue) {
+    final parsed = DateTime.tryParse(dateValue);
+    if (parsed == null) return '';
+    const labels = ['Pon', 'Uto', 'Sri', 'Čet', 'Pet', 'Sub', 'Ned'];
+    return labels[parsed.weekday - 1];
+  }
+
+  String _durationLabel(int days) {
+    switch (days) {
+      case 30:
+        return '1 mjesec';
+      case 90:
+        return '3 mjeseca';
+      case 180:
+        return '6 mjeseci';
+      case 365:
+        return '12 mjeseci';
+      default:
+        return '$days dana';
+    }
+  }
+
+  double _sessionPriceForDuration(double monthlyPrice, int durationDays) {
+    switch (durationDays) {
+      case 30:
+        return monthlyPrice;
+      case 90:
+        return monthlyPrice * 3 * 0.93;
+      case 180:
+        return monthlyPrice * 6 * 0.88;
+      case 365:
+        return monthlyPrice * 12 * 0.80;
+      default:
+        return monthlyPrice;
+    }
+  }
+
+  List<_SessionOffer> _buildSessionOffers(List<TrainingSessionModel> sessions) {
+    final grouped = <String, List<TrainingSessionModel>>{};
+    for (final session in sessions.where((s) => s.isGroup && s.isActive)) {
+      final key = '${session.gymId}|${session.title}|${session.trainerId}|${session.startTime}|${session.endTime}';
+      grouped.putIfAbsent(key, () => <TrainingSessionModel>[]).add(session);
+    }
+
+    final offers = grouped.values.map((items) {
+      items.sort((a, b) => _sessionStartAt(a).compareTo(_sessionStartAt(b)));
+      final primary = items.first;
+      final weekdays = items
+          .map((s) => _weekdayShortFromDate(s.date))
+          .where((d) => d.isNotEmpty)
+          .toSet()
+          .toList();
+      const weekdayOrder = ['Pon', 'Uto', 'Sri', 'Čet', 'Pet', 'Sub', 'Ned'];
+      weekdays.sort((a, b) => weekdayOrder.indexOf(a).compareTo(weekdayOrder.indexOf(b)));
+
+      return _SessionOffer(
+        representative: primary,
+        weekdays: weekdays,
+      );
+    }).toList();
+
+    offers.sort((a, b) {
+      final byTitle = a.representative.title.compareTo(b.representative.title);
+      if (byTitle != 0) return byTitle;
+      return a.representative.startTime.compareTo(b.representative.startTime);
+    });
+
+    return offers;
+  }
+
   Future<void> _openAddTrainingDialog() async {
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController();
@@ -1869,6 +2004,9 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() => _selectedIndex = index);
           if (index == 0 || index == 1 || index == 2) {
             _ensureTrainingDataLoaded();
+            if (index == 2) {
+              _loadPaidGroupSchedule();
+            }
           }
           if (index == 3) {
             _ensureProfileDataLoaded();
@@ -1939,7 +2077,7 @@ class _HomeScreenState extends State<HomeScreen> {
       byDuration.putIfAbsent(plan.durationDays, () => plan);
     }
     final activePlans = byDuration.values.take(4).toList();
-    final groupSessions = _sessions.where((session) => session.isGroup && session.isActive).take(3).toList();
+    final groupSessionOffers = _buildSessionOffers(_sessions).take(3).toList();
 
     String prettyTime(String value) => value.length >= 5 ? value.substring(0, 5) : value;
 
@@ -2499,19 +2637,19 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: EdgeInsets.symmetric(vertical: 8),
             child: Center(child: CircularProgressIndicator()),
           )
-        else if (groupSessions.isEmpty)
+        else if (groupSessionOffers.isEmpty)
           const Text('Trenutno nema grupnih treninga.', style: TextStyle(color: Color(0xFF8A94A8)))
         else
-          ...groupSessions.map(
-            (session) => Padding(
+          ...groupSessionOffers.map(
+            (offer) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: _GroupTrainingTile(
-                title: session.title,
-                schedule: '${session.date.substring(0, 10)} · ${prettyTime(session.startTime)} - ${prettyTime(session.endTime)}',
-                spotsLabel: 'Slobodno ${((session.maxParticipants - session.currentParticipants).clamp(0, session.maxParticipants))}/${session.maxParticipants}',
-                isReserved: _reservedSessionIds.contains(session.id),
-                isBusy: _reservationBusyIds.contains(session.id),
-                onReserveToggle: () => _toggleSessionReservation(session),
+                title: offer.representative.title,
+                schedule: '${offer.weekdays.isEmpty ? 'Sedmično' : offer.weekdays.join(' / ')} · ${prettyTime(offer.representative.startTime)} - ${prettyTime(offer.representative.endTime)}',
+                spotsLabel: 'Slobodno ${((offer.representative.maxParticipants - offer.representative.currentParticipants).clamp(0, offer.representative.maxParticipants))}/${offer.representative.maxParticipants}',
+                isReserved: _reservedSessionIds.contains(offer.representative.id),
+                isBusy: _reservationBusyIds.contains(offer.representative.id),
+                onReserveToggle: () => _toggleSessionReservation(offer.representative),
               ),
             ),
           ),
@@ -2969,7 +3107,18 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final daysRemaining = _activeMembership?.daysRemaining ?? 0;
-    final reservedSessions = _reservedSessions.where((s) => s.isGroup).toList();
+    final mergedGroupSessionsById = <int, TrainingSessionModel>{
+      for (final s in _reservedSessions.where((s) => s.isGroup)) s.id: s,
+      for (final s in _paidGroupSchedule.where((s) => s.isGroup)) s.id: s,
+    };
+    final reservedSessions = mergedGroupSessionsById.values.toList()
+      ..sort((a, b) => _sessionStartAt(a).compareTo(_sessionStartAt(b)));
+
+    final now = DateTime.now();
+    final upcomingGroupSessions = reservedSessions
+        .where((session) => _sessionStartAt(session).isAfter(now.subtract(const Duration(minutes: 1))))
+        .toList();
+
     String shortDate(String value) => value.length >= 10 ? value.substring(0, 10) : value;
     String shortTime(String value) => value.length >= 5 ? value.substring(0, 5) : value;
     String weekdayLabel(String value) {
@@ -3015,27 +3164,27 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        const _SectionTitle(icon: '🏋️', title: 'Rezervisani grupni treninzi'),
+        const _SectionTitle(icon: '🏋️', title: 'Moji grupni termini'),
         const SizedBox(height: 10),
-        if (_loadingReservations)
+        if (_loadingPaidGroupSchedule)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
             child: Center(child: CircularProgressIndicator()),
           )
-        else if (reservedSessions.isEmpty)
+        else if (upcomingGroupSessions.isEmpty)
           const Text(
-            'Nemate rezervisanih treninga. Rezervišite termin iz sekcije Grupni treninzi na početnoj.',
+            'Nemate aktivnih grupnih termina. Uplatite grupni trening i termini će se ovdje automatski prikazati.',
             style: TextStyle(color: Color(0xFF8A94A8)),
           )
         else
-          ...reservedSessions.take(5).map(
+          ...upcomingGroupSessions.take(8).map(
             (session) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: _ScheduleCard(
                 title: session.title,
                 schedule: '${weekdayLabel(session.date)}, ${shortDate(session.date)} · ${shortTime(session.startTime)} - ${shortTime(session.endTime)}',
                 details: '${session.gymName} · Trener: ${session.trainerFullName}',
-                tag: session.isGroup ? 'GRUPNI' : 'LIČNI',
+                tag: session.isGroup ? 'GRUPNI PLAĆENI' : 'LIČNI',
               ),
             ),
           ),
@@ -4289,6 +4438,16 @@ class _CustomTrainingEntry {
       completedAt: completedAt ?? this.completedAt,
     );
   }
+}
+
+class _SessionOffer {
+  final TrainingSessionModel representative;
+  final List<String> weekdays;
+
+  const _SessionOffer({
+    required this.representative,
+    required this.weekdays,
+  });
 }
 
 class _ProfileInfoBox extends StatelessWidget {

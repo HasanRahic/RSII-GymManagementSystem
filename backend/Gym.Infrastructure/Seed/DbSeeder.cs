@@ -17,6 +17,7 @@ public static class DbSeeder
         {
             await EnsureGymCatalogAsync(context);
             await EnsureMembershipPlanCatalogAsync(context);
+            await EnsureRecurringGroupSessionCatalogAsync(context);
             return;
         }
 
@@ -203,15 +204,59 @@ public static class DbSeeder
         });
         await context.SaveChangesAsync();
 
+        DateTime NextWeekday(DateTime fromUtc, DayOfWeek targetDay)
+        {
+            var date = fromUtc.Date;
+            while (date.DayOfWeek != targetDay)
+            {
+                date = date.AddDays(1);
+            }
+            return date;
+        }
+
         // ── Training Sessions ────────────────────────────────────────────────
+        var nextMonday = NextWeekday(now, DayOfWeek.Monday);
+        var nextTuesday = NextWeekday(now, DayOfWeek.Tuesday);
+        var nextWednesday = NextWeekday(now, DayOfWeek.Wednesday);
+        var nextThursday = NextWeekday(now, DayOfWeek.Thursday);
+        var nextFriday = NextWeekday(now, DayOfWeek.Friday);
+
         var sessions = new List<TrainingSession>
         {
             new()
             {
                 Title = "HIIT Jutarnji", Type = SessionType.Group,
-                Date = now.AddDays(2), StartTime = new TimeOnly(8, 0), EndTime = new TimeOnly(9, 0),
+                Date = nextMonday.AddHours(18), StartTime = new TimeOnly(18, 0), EndTime = new TimeOnly(19, 0),
                 MaxParticipants = 10, Price = 15m, TrainerId = trainer.Id,
                 GymId = gym2.Id, TrainingTypeId = trainingTypes[5].Id
+            },
+            new()
+            {
+                Title = "HIIT Jutarnji", Type = SessionType.Group,
+                Date = nextWednesday.AddHours(18), StartTime = new TimeOnly(18, 0), EndTime = new TimeOnly(19, 0),
+                MaxParticipants = 10, Price = 15m, TrainerId = trainer.Id,
+                GymId = gym2.Id, TrainingTypeId = trainingTypes[5].Id
+            },
+            new()
+            {
+                Title = "HIIT Jutarnji", Type = SessionType.Group,
+                Date = nextFriday.AddHours(18), StartTime = new TimeOnly(18, 0), EndTime = new TimeOnly(19, 0),
+                MaxParticipants = 10, Price = 15m, TrainerId = trainer.Id,
+                GymId = gym2.Id, TrainingTypeId = trainingTypes[5].Id
+            },
+            new()
+            {
+                Title = "Yoga Core", Type = SessionType.Group,
+                Date = nextTuesday.AddHours(19), StartTime = new TimeOnly(19, 0), EndTime = new TimeOnly(20, 0),
+                MaxParticipants = 14, Price = 18m, TrainerId = trainer.Id,
+                GymId = gym2.Id, TrainingTypeId = trainingTypes[2].Id
+            },
+            new()
+            {
+                Title = "Yoga Core", Type = SessionType.Group,
+                Date = nextThursday.AddHours(19), StartTime = new TimeOnly(19, 0), EndTime = new TimeOnly(20, 0),
+                MaxParticipants = 14, Price = 18m, TrainerId = trainer.Id,
+                GymId = gym2.Id, TrainingTypeId = trainingTypes[2].Id
             },
             new()
             {
@@ -361,6 +406,141 @@ public static class DbSeeder
                     GymId = gymId.Value,
                     IsActive = true,
                 });
+            }
+        }
+
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task EnsureRecurringGroupSessionCatalogAsync(GymDbContext context)
+    {
+        var trainerId = await context.Users
+            .AsNoTracking()
+            .Where(u => u.Role == UserRole.Trainer && u.IsActive)
+            .Select(u => (int?)u.Id)
+            .FirstOrDefaultAsync();
+
+        var gymId = await context.Gyms
+            .AsNoTracking()
+            .Where(g => g.Name == "PowerHouse Mostar")
+            .Select(g => (int?)g.Id)
+            .FirstOrDefaultAsync();
+
+        var hiitTypeId = await context.TrainingTypes
+            .AsNoTracking()
+            .Where(t => t.Name == "HIIT")
+            .Select(t => (int?)t.Id)
+            .FirstOrDefaultAsync();
+
+        var yogaTypeId = await context.TrainingTypes
+            .AsNoTracking()
+            .Where(t => t.Name == "Yoga")
+            .Select(t => (int?)t.Id)
+            .FirstOrDefaultAsync();
+
+        if (!trainerId.HasValue || !gymId.HasValue || !hiitTypeId.HasValue || !yogaTypeId.HasValue)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+
+        DateTime NextWeekday(DateTime fromUtc, DayOfWeek targetDay)
+        {
+            var date = fromUtc.Date;
+            while (date.DayOfWeek != targetDay)
+            {
+                date = date.AddDays(1);
+            }
+            return date;
+        }
+
+        var targetSessions = new List<TrainingSession>
+        {
+            new()
+            {
+                Title = "HIIT Jutarnji",
+                Type = SessionType.Group,
+                Date = NextWeekday(now, DayOfWeek.Monday).AddHours(18),
+                StartTime = new TimeOnly(18, 0),
+                EndTime = new TimeOnly(19, 0),
+                MaxParticipants = 10,
+                Price = 15m,
+                TrainerId = trainerId.Value,
+                GymId = gymId.Value,
+                TrainingTypeId = hiitTypeId.Value,
+                IsActive = true,
+            },
+            new()
+            {
+                Title = "HIIT Jutarnji",
+                Type = SessionType.Group,
+                Date = NextWeekday(now, DayOfWeek.Wednesday).AddHours(18),
+                StartTime = new TimeOnly(18, 0),
+                EndTime = new TimeOnly(19, 0),
+                MaxParticipants = 10,
+                Price = 15m,
+                TrainerId = trainerId.Value,
+                GymId = gymId.Value,
+                TrainingTypeId = hiitTypeId.Value,
+                IsActive = true,
+            },
+            new()
+            {
+                Title = "HIIT Jutarnji",
+                Type = SessionType.Group,
+                Date = NextWeekday(now, DayOfWeek.Friday).AddHours(18),
+                StartTime = new TimeOnly(18, 0),
+                EndTime = new TimeOnly(19, 0),
+                MaxParticipants = 10,
+                Price = 15m,
+                TrainerId = trainerId.Value,
+                GymId = gymId.Value,
+                TrainingTypeId = hiitTypeId.Value,
+                IsActive = true,
+            },
+            new()
+            {
+                Title = "Yoga Core",
+                Type = SessionType.Group,
+                Date = NextWeekday(now, DayOfWeek.Tuesday).AddHours(19),
+                StartTime = new TimeOnly(19, 0),
+                EndTime = new TimeOnly(20, 0),
+                MaxParticipants = 14,
+                Price = 18m,
+                TrainerId = trainerId.Value,
+                GymId = gymId.Value,
+                TrainingTypeId = yogaTypeId.Value,
+                IsActive = true,
+            },
+            new()
+            {
+                Title = "Yoga Core",
+                Type = SessionType.Group,
+                Date = NextWeekday(now, DayOfWeek.Thursday).AddHours(19),
+                StartTime = new TimeOnly(19, 0),
+                EndTime = new TimeOnly(20, 0),
+                MaxParticipants = 14,
+                Price = 18m,
+                TrainerId = trainerId.Value,
+                GymId = gymId.Value,
+                TrainingTypeId = yogaTypeId.Value,
+                IsActive = true,
+            },
+        };
+
+        foreach (var session in targetSessions)
+        {
+            var exists = await context.TrainingSessions.AnyAsync(s =>
+                s.GymId == session.GymId &&
+                s.Title == session.Title &&
+                s.Date.Date == session.Date.Date &&
+                s.StartTime == session.StartTime &&
+                s.Type == SessionType.Group);
+
+            if (!exists)
+            {
+                context.TrainingSessions.Add(session);
             }
         }
 

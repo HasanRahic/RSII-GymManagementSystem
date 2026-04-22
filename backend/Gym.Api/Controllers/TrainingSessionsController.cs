@@ -74,4 +74,12 @@ public class TrainingSessionsController(ITrainingSessionService sessionService) 
         if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
         return Ok(await sessionService.GetUserReservationsAsync(userId));
     }
+
+    [HttpGet("my-paid-group-schedule")]
+    public async Task<IActionResult> GetMyPaidGroupSchedule()
+    {
+        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
+        return Ok(await sessionService.GetUserPaidGroupScheduleAsync(userId));
+    }
 }

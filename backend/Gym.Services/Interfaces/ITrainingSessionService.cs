@@ -11,4 +11,5 @@ public interface ITrainingSessionService
     Task<SessionReservationDto> ReserveAsync(int userId, int sessionId);
     Task CancelReservationAsync(int userId, int reservationId);
     Task<IEnumerable<SessionReservationDto>> GetUserReservationsAsync(int userId);
+    Task<IEnumerable<TrainingSessionDto>> GetUserPaidGroupScheduleAsync(int userId);
 }

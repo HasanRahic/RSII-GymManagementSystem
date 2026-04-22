@@ -45,7 +45,9 @@ public class PaymentsController(
                 p.Amount,
                 p.Currency,
                 p.CreatedAt,
-                p.CompletedAt
+                p.CompletedAt,
+                p.SessionAccessDays,
+                p.SessionAccessUntil
             ))
             .ToListAsync();
 
@@ -308,6 +310,12 @@ public class PaymentsController(
             return BadRequest(new { message = "Neispravan tip grupnog treninga." });
         }
 
+        var durationDays = NormalizeSessionDuration(dto.SessionDurationDays);
+        if (durationDays is null)
+        {
+            return BadRequest(new { message = "Neispravno trajanje grupnog treninga. Dozvoljeno: 30, 90, 180, 365 dana." });
+        }
+
         var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!int.TryParse(idClaim, out var userId))
         {
@@ -349,11 +357,12 @@ public class PaymentsController(
         var payment = new Payment
         {
             UserId = userId,
-            Amount = trainingSession.Price,
+            Amount = CalculateSessionMembershipPrice(trainingSession.Price, durationDays.Value),
             Currency = "BAM",
             Type = PaymentType.Session,
             Status = PaymentStatus.Pending,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            SessionAccessDays = durationDays.Value,
         };
 
         context.Payments.Add(payment);
@@ -365,6 +374,7 @@ public class PaymentsController(
             ["userId"] = userId.ToString(),
             ["type"] = "Session",
             ["trainingSessionId"] = trainingSession.Id.ToString(),
+            ["sessionDurationDays"] = durationDays.Value.ToString(),
         };
 
         var options = new SessionCreateOptions
@@ -380,9 +390,9 @@ public class PaymentsController(
                         ProductData = new SessionLineItemPriceDataProductDataOptions
                         {
                             Name = trainingSession.Title,
-                            Description = $"Grupni trening u {trainingSession.Gym.Name}"
+                            Description = $"Grupni trening u {trainingSession.Gym.Name} ({durationDays} dana)"
                         },
-                        UnitAmountDecimal = trainingSession.Price * 100m
+                        UnitAmountDecimal = payment.Amount * 100m
                     },
                     Quantity = 1
                 }
@@ -420,5 +430,29 @@ public class PaymentsController(
             session.Url ?? string.Empty,
             payment.Amount
         ));
+    }
+
+    private static int? NormalizeSessionDuration(int? durationDays)
+    {
+        return durationDays switch
+        {
+            30 => 30,
+            90 => 90,
+            180 => 180,
+            365 => 365,
+            _ => null,
+        };
+    }
+
+    private static decimal CalculateSessionMembershipPrice(decimal monthlyBasePrice, int durationDays)
+    {
+        return durationDays switch
+        {
+            30 => monthlyBasePrice,
+            90 => monthlyBasePrice * 3m * 0.93m,
+            180 => monthlyBasePrice * 6m * 0.88m,
+            365 => monthlyBasePrice * 12m * 0.80m,
+            _ => monthlyBasePrice,
+        };
     }
 }

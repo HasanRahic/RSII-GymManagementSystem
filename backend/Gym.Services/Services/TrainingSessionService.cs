@@ -80,6 +80,15 @@ public class TrainingSessionService : ITrainingSessionService
             .FirstOrDefaultAsync(s => s.Id == sessionId && s.IsActive)
             ?? throw new KeyNotFoundException("Sesija nije pronađena.");
 
+        if (session.Type == SessionType.Group)
+        {
+            var hasGroupAccess = await HasActiveGroupProgramAccessAsync(userId, session);
+            if (!hasGroupAccess)
+            {
+                throw new InvalidOperationException("Za rezervaciju grupnog treninga potrebna je aktivna grupna članarina za ovaj program.");
+            }
+        }
+
         var activeCount = session.Reservations.Count(r => r.Status == ReservationStatus.Confirmed);
         if (activeCount >= session.MaxParticipants)
             throw new InvalidOperationException("Sesija je popunjena.");
@@ -96,7 +105,10 @@ public class TrainingSessionService : ITrainingSessionService
     public async Task CancelReservationAsync(int userId, int reservationId)
     {
         var reservation = await _context.SessionReservations
-            .FirstOrDefaultAsync(r => r.Id == reservationId && r.UserId == userId)
+            .FirstOrDefaultAsync(r =>
+                r.TrainingSessionId == reservationId &&
+                r.UserId == userId &&
+                r.Status == ReservationStatus.Confirmed)
             ?? throw new KeyNotFoundException("Rezervacija nije pronađena.");
 
         reservation.Status = ReservationStatus.Cancelled;
@@ -111,6 +123,120 @@ public class TrainingSessionService : ITrainingSessionService
             .OrderByDescending(r => r.ReservedAt)
             .ToListAsync();
         return list.Select(ToReservationDto);
+    }
+
+    public async Task<IEnumerable<TrainingSessionDto>> GetUserPaidGroupScheduleAsync(int userId)
+    {
+        var now = DateTime.UtcNow;
+
+        var paidGroupPrograms = await _context.Payments
+            .AsNoTracking()
+            .Include(p => p.SessionReservation)
+            .ThenInclude(r => r!.TrainingSession)
+            .Where(p =>
+                p.UserId == userId &&
+                p.Type == PaymentType.Session &&
+                p.Status == PaymentStatus.Succeeded &&
+                p.SessionAccessUntil.HasValue &&
+                p.SessionAccessUntil.Value > now &&
+                p.SessionReservation != null &&
+                p.SessionReservation.TrainingSession.Type == SessionType.Group)
+            .Select(p => new
+            {
+                p.SessionReservation!.TrainingSession.GymId,
+                p.SessionReservation.TrainingSession.TrainerId,
+                p.SessionReservation.TrainingSession.TrainingTypeId,
+                p.SessionReservation.TrainingSession.Title,
+                p.SessionReservation.TrainingSession.StartTime,
+                p.SessionReservation.TrainingSession.EndTime,
+            })
+            .Distinct()
+            .ToListAsync();
+
+        if (paidGroupPrograms.Count == 0)
+        {
+            return Enumerable.Empty<TrainingSessionDto>();
+        }
+
+        var programKeys = paidGroupPrograms
+            .Select(pg => BuildProgramKey(
+                pg.GymId,
+                pg.TrainerId,
+                pg.TrainingTypeId,
+                pg.Title,
+                pg.StartTime,
+                pg.EndTime))
+            .ToHashSet();
+
+        var candidateSessions = await _context.TrainingSessions
+            .Include(s => s.Trainer)
+            .Include(s => s.Gym)
+            .Include(s => s.TrainingType)
+            .Include(s => s.Reservations)
+            .Where(s =>
+                s.IsActive &&
+                s.Type == SessionType.Group &&
+                s.Date >= now.Date)
+            .ToListAsync();
+
+        var sessions = candidateSessions
+            .Where(s => programKeys.Contains(BuildProgramKey(
+                s.GymId,
+                s.TrainerId,
+                s.TrainingTypeId,
+                s.Title,
+                s.StartTime,
+                s.EndTime)))
+            .OrderBy(s => s.Date)
+            .ThenBy(s => s.StartTime)
+            .Take(30)
+            .ToList();
+
+        return sessions.Select(ToDto);
+    }
+
+    private static string BuildProgramKey(
+        int gymId,
+        int trainerId,
+        int trainingTypeId,
+        string title,
+        TimeOnly startTime,
+        TimeOnly endTime)
+        => $"{gymId}|{trainerId}|{trainingTypeId}|{title}|{startTime}|{endTime}";
+
+    private async Task<bool> HasActiveGroupProgramAccessAsync(int userId, TrainingSession session)
+    {
+        var now = DateTime.UtcNow;
+        var key = BuildProgramKey(
+            session.GymId,
+            session.TrainerId,
+            session.TrainingTypeId,
+            session.Title,
+            session.StartTime,
+            session.EndTime);
+
+        var paidPrograms = await _context.Payments
+            .AsNoTracking()
+            .Include(p => p.SessionReservation)
+            .ThenInclude(r => r!.TrainingSession)
+            .Where(p =>
+                p.UserId == userId &&
+                p.Type == PaymentType.Session &&
+                p.Status == PaymentStatus.Succeeded &&
+                p.SessionAccessUntil.HasValue &&
+                p.SessionAccessUntil.Value > now &&
+                p.SessionReservation != null &&
+                p.SessionReservation.TrainingSession.Type == SessionType.Group)
+            .Select(p => BuildProgramKey(
+                p.SessionReservation!.TrainingSession.GymId,
+                p.SessionReservation.TrainingSession.TrainerId,
+                p.SessionReservation.TrainingSession.TrainingTypeId,
+                p.SessionReservation.TrainingSession.Title,
+                p.SessionReservation.TrainingSession.StartTime,
+                p.SessionReservation.TrainingSession.EndTime))
+            .ToListAsync();
+
+        return paidPrograms.Contains(key);
     }
 
     private async Task<SessionReservationDto> LoadReservationDto(int id)

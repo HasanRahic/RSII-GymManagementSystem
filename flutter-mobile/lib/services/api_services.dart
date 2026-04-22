@@ -80,6 +80,7 @@ class PaymentService {
       'membershipPlanId': membershipPlanId,
       'trainingSessionId': null,
       'discountPercent': discountPercent,
+      'sessionDurationDays': null,
     });
 
     return Map<String, dynamic>.from(data as Map);
@@ -87,12 +88,14 @@ class PaymentService {
 
   static Future<Map<String, dynamic>> createSessionCheckout({
     required int trainingSessionId,
+    required int sessionDurationDays,
   }) async {
     final data = await ApiClient.post('/payments/session-checkout', {
       'type': 1,
       'membershipPlanId': null,
       'trainingSessionId': trainingSessionId,
       'discountPercent': 0,
+      'sessionDurationDays': sessionDurationDays,
     });
 
     return Map<String, dynamic>.from(data as Map);
@@ -192,6 +195,11 @@ class TrainingSessionService {
 
   static Future<List<TrainingSessionModel>> getMyReservations() async {
     final data = await ApiClient.get('/training-sessions/my-reservations') as List;
+    return data.map((e) => TrainingSessionModel.fromJson(e)).toList();
+  }
+
+  static Future<List<TrainingSessionModel>> getMyPaidGroupSchedule() async {
+    final data = await ApiClient.get('/training-sessions/my-paid-group-schedule') as List;
     return data.map((e) => TrainingSessionModel.fromJson(e)).toList();
   }
 }
