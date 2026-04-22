@@ -110,31 +110,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return items;
   }
 
-  bool _isSucceededSessionPayment(Map<String, dynamic> payment) {
-    final rawType = payment['type'];
-    final rawStatus = payment['status'];
-    final typeText = '$rawType'.toLowerCase();
-    final statusText = '$rawStatus'.toLowerCase();
-    final isSession = rawType == 1 || typeText == 'session';
-    final isSucceeded = rawStatus == 1 || statusText == 'succeeded';
-    if (!isSession || !isSucceeded) {
-      return false;
-    }
-
-    final accessUntil = DateTime.tryParse('${payment['sessionAccessUntil'] ?? ''}');
-    if (accessUntil != null) {
-      return accessUntil.isAfter(DateTime.now().toUtc());
-    }
-
-    final completedAt = DateTime.tryParse('${payment['completedAt'] ?? ''}');
-    final durationDays = int.tryParse('${payment['sessionAccessDays'] ?? ''}') ?? 0;
-    if (completedAt != null && durationDays > 0) {
-      return completedAt.add(Duration(days: durationDays)).isAfter(DateTime.now().toUtc());
-    }
-
-    return false;
-  }
-
   @override
   void initState() {
     super.initState();
@@ -179,17 +154,18 @@ class _HomeScreenState extends State<HomeScreen> {
       final results = await Future.wait<dynamic>([
         MembershipService.getMyActiveMembership(),
         MembershipService.getMyMemberships(),
-        PaymentService.getMyPayments(take: 50),
+        MembershipService.getMyAccessStatus(),
       ]);
       final membership = results[0] as UserMembership?;
       final memberships = results[1] as List<UserMembership>;
-      final payments = results[2] as List<Map<String, dynamic>>;
+      final accessStatus = results[2] as Map<String, dynamic>;
       final activeFromList = memberships
           .where((m) => m.status == 0)
           .toList()
         ..sort((a, b) => b.id.compareTo(a.id));
       final resolvedMembership = membership ?? (activeFromList.isNotEmpty ? activeFromList.first : null);
-      final hasGroupTrainingAccess = payments.any(_isSucceededSessionPayment);
+      final hasGroupTrainingAccess =
+          accessStatus['hasActiveGroupTrainingAccess'] == true;
 
       if (!mounted) return;
       final fallbackCount = ((resolvedMembership?.daysRemaining ?? 0) ~/ 2) + 6;

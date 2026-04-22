@@ -44,6 +44,11 @@ class MembershipService {
     }
   }
 
+  static Future<Map<String, dynamic>> getMyAccessStatus() async {
+    final data = await ApiClient.get('/memberships/my/access-status');
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   static Future<UserMembership> renew({
     required int userId,
     required int membershipPlanId,

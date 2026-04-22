@@ -71,6 +71,13 @@ public record PaymentListItemDto(
     DateTime? SessionAccessUntil
 );
 
+public record AccessStatusDto(
+    bool HasActiveMembership,
+    bool HasActiveGroupTrainingAccess,
+    bool HasGymAccess,
+    DateTime? GroupAccessUntil
+);
+
 // Reference DTOs
 public record CityDto(int Id, string Name, string? PostalCode, int CountryId, string CountryName);
 public record CountryDto(int Id, string Name, string Code);

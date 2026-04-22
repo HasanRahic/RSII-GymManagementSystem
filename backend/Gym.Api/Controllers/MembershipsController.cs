@@ -1,9 +1,12 @@
 using System.Security.Claims;
 using Gym.Api.Services;
+using Gym.Infrastructure.Data;
+using Gym.Core.Enums;
 using Gym.Services.DTOs;
 using Gym.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Gym.Api.Controllers;
 
@@ -12,7 +15,8 @@ namespace Gym.Api.Controllers;
 [Authorize]
 public class MembershipsController(
     IMembershipService membershipService,
-    IStripePaymentSyncService stripePaymentSyncService) : ControllerBase
+    IStripePaymentSyncService stripePaymentSyncService,
+    GymDbContext context) : ControllerBase
 {
     // ----- Plans -----
 
@@ -60,6 +64,36 @@ public class MembershipsController(
         await stripePaymentSyncService.ReconcileLatestMembershipPaymentsAsync(userId);
         var membership = await membershipService.GetActiveMembershipAsync(userId);
         return membership is null ? NotFound() : Ok(membership);
+    }
+
+    [HttpGet("my/access-status")]
+    public async Task<IActionResult> GetMyAccessStatus()
+    {
+        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
+
+        await stripePaymentSyncService.ReconcileLatestMembershipPaymentsAsync(userId);
+
+        var now = DateTime.UtcNow;
+        var activeMembership = await membershipService.GetActiveMembershipAsync(userId);
+
+        var latestGroupAccessUntil = await context.Payments
+            .AsNoTracking()
+            .Where(p =>
+                p.UserId == userId &&
+                p.Type == PaymentType.Session &&
+                p.Status == PaymentStatus.Succeeded &&
+                p.SessionAccessUntil.HasValue)
+            .MaxAsync(p => p.SessionAccessUntil);
+
+        var hasGroupAccess = latestGroupAccessUntil.HasValue && latestGroupAccessUntil.Value > now;
+        var hasMembershipAccess = activeMembership is not null;
+
+        return Ok(new AccessStatusDto(
+            hasMembershipAccess,
+            hasGroupAccess,
+            hasMembershipAccess || hasGroupAccess,
+            latestGroupAccessUntil));
     }
 
     [HttpPost("renew")]
