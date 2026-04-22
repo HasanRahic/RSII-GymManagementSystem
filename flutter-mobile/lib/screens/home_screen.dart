@@ -2054,8 +2054,24 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     final activePlans = byDuration.values.take(4).toList();
     final groupSessionOffers = _buildSessionOffers(_sessions).take(3).toList();
+    final now = DateTime.now();
+    final upcomingPaidGroupSessions = _paidGroupSchedule
+        .where((session) => _sessionStartAt(session).isAfter(now.subtract(const Duration(minutes: 1))))
+        .toList()
+      ..sort((a, b) => _sessionStartAt(a).compareTo(_sessionStartAt(b)));
+    final nextPaidGroupSession = upcomingPaidGroupSessions.isNotEmpty ? upcomingPaidGroupSessions.first : null;
 
     String prettyTime(String value) => value.length >= 5 ? value.substring(0, 5) : value;
+    String countdownText(DateTime sessionStart) {
+      final diff = sessionStart.difference(now);
+      if (diff.isNegative) return 'u toku';
+      final days = diff.inDays;
+      final hours = diff.inHours.remainder(24);
+      final minutes = diff.inMinutes.remainder(60);
+      if (days > 0) return 'za $days dana';
+      if (hours > 0) return 'za $hours h';
+      return 'za $minutes min';
+    }
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -2200,6 +2216,34 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                     const SizedBox(height: 16),
+
+                    if (nextPaidGroupSession != null) ...[
+                      _TopCard(
+                        title: 'Najbliži plaćeni grupni trening',
+                        subtitle: '${nextPaidGroupSession.gymName} · ${countdownText(_sessionStartAt(nextPaidGroupSession))}',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              nextPaidGroupSession.title,
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '${_formatDate(nextPaidGroupSession.date)} · ${prettyTime(nextPaidGroupSession.startTime)} - ${prettyTime(nextPaidGroupSession.endTime)}',
+                              style: const TextStyle(color: Color(0xFF64748B)),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Trener: ${nextPaidGroupSession.trainerFullName}',
+                              style: const TextStyle(color: Color(0xFF64748B)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+
                     // Working hours section
                     Container(
                       padding: const EdgeInsets.symmetric(
