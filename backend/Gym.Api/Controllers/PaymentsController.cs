@@ -6,6 +6,7 @@ using Gym.Infrastructure.Data;
 using Gym.Services.DTOs;
 using Gym.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Stripe;
@@ -16,6 +17,7 @@ namespace Gym.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
+[EnableRateLimiting("payments")]
 public class PaymentsController(
     GymDbContext context,
     IStripePaymentSyncService stripePaymentSyncService) : ControllerBase
