@@ -175,6 +175,11 @@ class PaymentService {
     existing.remove(paymentId.toString());
     await prefs.setStringList(_pendingPaymentsKey, existing);
   }
+
+  static Future<Map<String, dynamic>> retryFailedPayment(int paymentId) async {
+    final data = await ApiClient.post('/payments/$paymentId/retry-checkout', {});
+    return Map<String, dynamic>.from(data as Map);
+  }
 }
 
 class TrainingSessionService {

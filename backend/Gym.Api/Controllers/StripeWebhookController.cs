@@ -98,6 +98,13 @@ public class StripeWebhookController : ControllerBase
             return;
         }
 
+        // Idempotency: if payment is already processed, skip
+        if (payment.Status != PaymentStatus.Pending)
+        {
+            _logger.LogInformation("Stripe checkout session {SessionId} for payment {PaymentId} already processed (status={Status}). Skipping duplicate webhook.", session.Id, payment.Id, payment.Status);
+            return;
+        }
+
         payment.StripeSessionId = session.Id;
         payment.StripePaymentIntentId = session.PaymentIntentId ?? payment.StripePaymentIntentId;
 
@@ -129,6 +136,13 @@ public class StripeWebhookController : ControllerBase
             return;
         }
 
+        // Idempotency: if payment is already processed, skip
+        if (payment.Status != PaymentStatus.Pending)
+        {
+            _logger.LogInformation("Stripe payment intent {PaymentIntentId} for payment {PaymentId} already processed (status={Status}). Skipping duplicate webhook.", paymentIntent.Id, payment.Id, payment.Status);
+            return;
+        }
+
         payment.StripePaymentIntentId = paymentIntent.Id;
         await FulfillMembershipAsync(payment, paymentIntent.Metadata, $"payment intent {paymentIntent.Id}");
         await FulfillSessionReservationAsync(payment, paymentIntent.Metadata, $"payment intent {paymentIntent.Id}");
@@ -154,6 +168,13 @@ public class StripeWebhookController : ControllerBase
         if (payment is null)
         {
             _logger.LogInformation("Stripe payment intent {PaymentIntentId} failed but no payment record was found.", paymentIntent.Id);
+            return;
+        }
+
+        // Idempotency: if already marked failed, skip
+        if (payment.Status == PaymentStatus.Failed)
+        {
+            _logger.LogInformation("Stripe payment intent {PaymentIntentId} for payment {PaymentId} already marked failed. Skipping duplicate webhook.", paymentIntent.Id, payment.Id);
             return;
         }
 

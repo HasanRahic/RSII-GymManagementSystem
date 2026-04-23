@@ -446,6 +446,142 @@ public class PaymentsController(
         };
     }
 
+    [HttpPost("{paymentId:int}/retry-checkout")]
+    public async Task<IActionResult> RetryCheckout(int paymentId)
+    {
+        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(idClaim, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var payment = await context.Payments.FirstOrDefaultAsync(p => p.Id == paymentId && p.UserId == userId);
+        if (payment is null)
+        {
+            return NotFound(new { message = "Uplata nije pronađena." });
+        }
+
+        if (payment.Status != PaymentStatus.Failed)
+        {
+            return BadRequest(new { message = "Samo neuspješne uplate se mogu ponovno pokušati." });
+        }
+
+        var userEmail = await context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => u.Email)
+            .FirstOrDefaultAsync();
+
+        if (string.IsNullOrWhiteSpace(userEmail))
+        {
+            return BadRequest(new { message = "Korisnik nema validan email za Stripe checkout." });
+        }
+
+        var lineItems = new List<SessionLineItemOptions>
+        {
+            new()
+            {
+                PriceData = new SessionLineItemPriceDataOptions
+                {
+                    Currency = "bam",
+                    ProductData = new SessionLineItemPriceDataProductDataOptions
+                    {
+                        Name = "Pokušaj - Pretprethodna plaćanja",
+                        Description = $"Pokušaj neuspješne uplate #{paymentId}"
+                    },
+                    UnitAmountDecimal = payment.Amount * 100m
+                },
+                Quantity = 1
+            }
+        };
+
+        var newPayment = new Payment
+        {
+            UserId = userId,
+            Amount = payment.Amount,
+            Currency = payment.Currency,
+            Type = payment.Type,
+            Status = PaymentStatus.Pending,
+            CreatedAt = DateTime.UtcNow,
+            SessionAccessDays = payment.SessionAccessDays
+        };
+
+        context.Payments.Add(newPayment);
+        await context.SaveChangesAsync();
+
+        var metadata = new Dictionary<string, string>
+        {
+            ["paymentId"] = newPayment.Id.ToString(),
+            ["userId"] = userId.ToString(),
+            ["type"] = payment.Type.ToString(),
+        };
+
+        // Attempt to preserve original metadata for retries
+        if (payment.Type == PaymentType.Membership)
+        {
+            var membershipPlanId = await context.UserMemberships
+                .Where(m => m.PaymentId == paymentId)
+                .Select(m => m.MembershipPlanId)
+                .FirstOrDefaultAsync();
+
+            if (membershipPlanId > 0)
+            {
+                metadata["membershipPlanId"] = membershipPlanId.ToString();
+            }
+        }
+        else if (payment.Type == PaymentType.Session && payment.SessionAccessDays.HasValue)
+        {
+            var originalSessionId = await context.SessionReservations
+                .Where(r => r.PaymentId == paymentId)
+                .Select(r => r.TrainingSessionId)
+                .FirstOrDefaultAsync();
+
+            if (originalSessionId > 0)
+            {
+                metadata["trainingSessionId"] = originalSessionId.ToString();
+                metadata["sessionDurationDays"] = payment.SessionAccessDays.Value.ToString();
+            }
+        }
+
+        var options = new SessionCreateOptions
+        {
+            PaymentMethodTypes = new List<string> { "card" },
+            LineItems = lineItems,
+            Mode = "payment",
+            SuccessUrl = $"{Request.Scheme}://{Request.Host}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}",
+            CancelUrl = $"{Request.Scheme}://{Request.Host}/checkout/cancel",
+            CustomerEmail = userEmail,
+            Metadata = metadata,
+            PaymentIntentData = new SessionPaymentIntentDataOptions
+            {
+                Metadata = new Dictionary<string, string>(metadata)
+            }
+        };
+
+        Session session;
+        try
+        {
+            var sessionService = new SessionService();
+            session = await sessionService.CreateAsync(options);
+        }
+        catch (StripeException ex)
+        {
+            newPayment.Status = PaymentStatus.Failed;
+            newPayment.CompletedAt = DateTime.UtcNow;
+            await context.SaveChangesAsync();
+            return BadRequest(new { message = $"Stripe greška: {ex.Message}" });
+        }
+
+        newPayment.StripeSessionId = session.Id;
+        await context.SaveChangesAsync();
+
+        return Ok(new StripeCheckoutDto(
+            newPayment.Id,
+            session.Url ?? string.Empty,
+            newPayment.Amount
+        ));
+    }
+
     private static decimal CalculateSessionMembershipPrice(decimal monthlyBasePrice, int durationDays)
     {
         return durationDays switch
