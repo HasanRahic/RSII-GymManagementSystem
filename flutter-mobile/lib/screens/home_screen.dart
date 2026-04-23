@@ -3138,6 +3138,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final upcomingGroupSessions = reservedSessions
         .where((session) => _sessionStartAt(session).isAfter(now.subtract(const Duration(minutes: 1))))
         .toList();
+    final reminderSessions = upcomingGroupSessions
+      .where((session) => _sessionStartAt(session).difference(now).inHours <= 48)
+      .take(3)
+      .toList();
 
     String shortDate(String value) => value.length >= 10 ? value.substring(0, 10) : value;
     String shortTime(String value) => value.length >= 5 ? value.substring(0, 5) : value;
@@ -3146,6 +3150,13 @@ class _HomeScreenState extends State<HomeScreen> {
       if (parsed == null) return 'Dan nije poznat';
       const labels = ['Pon', 'Uto', 'Sri', 'Čet', 'Pet', 'Sub', 'Ned'];
       return labels[parsed.weekday - 1];
+    }
+
+    String reminderLabel(DateTime start) {
+      final diff = start.difference(now);
+      if (diff.inMinutes <= 120) return 'Počinje uskoro';
+      if (diff.inHours < 24) return 'Danas';
+      return 'Sutra';
     }
 
     return ListView(
@@ -3184,6 +3195,64 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 14),
+        if (!_loadingPaidGroupSchedule && reminderSessions.isNotEmpty) ...[
+          const _SectionTitle(icon: '⏰', title: 'Podsjetnici'),
+          const SizedBox(height: 10),
+          ...reminderSessions.map(
+            (session) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFDE68A)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.notifications_active_outlined, color: Color(0xFFB45309)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            session.title,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${weekdayLabel(session.date)}, ${shortDate(session.date)} · ${shortTime(session.startTime)} - ${shortTime(session.endTime)}',
+                            style: const TextStyle(color: Color(0xFF92400E)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        reminderLabel(_sessionStartAt(session)),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+
         const _SectionTitle(icon: '🏋️', title: 'Moji grupni termini'),
         const SizedBox(height: 10),
         if (_loadingPaidGroupSchedule)
