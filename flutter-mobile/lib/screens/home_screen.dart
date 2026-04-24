@@ -597,6 +597,68 @@ class _HomeScreenState extends State<HomeScreen> {
     final id = payment['paymentId'] ?? payment['id'];
     return '#$id';
   }
+
+  int _paymentId(Map<String, dynamic> payment) {
+    final raw = payment['paymentId'] ?? payment['id'];
+    if (raw is int) return raw;
+    return int.tryParse('$raw') ?? 0;
+  }
+
+  bool _isFailedPayment(Map<String, dynamic> payment) {
+    final rawStatus = payment['status'];
+    final status = '$rawStatus'.toLowerCase();
+    return rawStatus == 2 || status == 'failed';
+  }
+
+  Future<void> _retryFailedPayment(Map<String, dynamic> payment) async {
+    final originalPaymentId = _paymentId(payment);
+    if (originalPaymentId <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ID uplate nije validan za ponovni pokušaj.')),
+      );
+      return;
+    }
+
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    try {
+      final result = await PaymentService.retryFailedPayment(originalPaymentId);
+      final paymentId = result['paymentId'];
+      final sessionUrl = result['sessionUrl'];
+      final amount = result['amount'];
+      final parsedPaymentId = paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0;
+
+      if (sessionUrl == null || sessionUrl.toString().isEmpty) {
+        throw 'Stripe checkout nije dostupan.';
+      }
+
+      await PaymentService.markPendingPayment(parsedPaymentId);
+      await _refreshPendingPaymentsCount();
+
+      final launched = await _launchStripeCheckout(sessionUrl.toString());
+      if (!launched) {
+        throw 'Ne mogu otvoriti checkout URL.';
+      }
+
+      if (!mounted) return;
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Ponovni checkout za uplatu #$originalPaymentId je pokrenut (${(amount as num).toStringAsFixed(0)} KM).',
+          ),
+        ),
+      );
+
+      await _trackPaymentStatus(parsedPaymentId, scaffoldMessenger);
+    } catch (e) {
+      if (!mounted) return;
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text('Ponovni pokušaj uplate nije uspio: $e')),
+      );
+    }
+  }
+
   Widget _detailLine(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -653,6 +715,15 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         actions: [
+          if (_isFailedPayment(payment))
+            FilledButton.icon(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await _retryFailedPayment(payment);
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Pokušaj ponovo'),
+            ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Zatvori'),
@@ -700,14 +771,28 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _paymentHistoryRow(Map<String, dynamic> payment) {
-    return InkWell(
-      onTap: () => _showPaymentDetails(payment),
-      borderRadius: BorderRadius.circular(16),
-      child: _HistoryCard(
-        title: '${_paymentReference(payment)} ${_paymentTypeLabel(payment['type'])}',
-        value: '${((payment['amount'] as num?) ?? 0).toStringAsFixed(0)} ${payment['currency'] ?? 'KM'}',
-        date: '${_formatIsoDate(payment['createdAt'])} · ${_paymentStatusLabel(payment['status'])}',
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => _showPaymentDetails(payment),
+          borderRadius: BorderRadius.circular(16),
+          child: _HistoryCard(
+            title: '${_paymentReference(payment)} ${_paymentTypeLabel(payment['type'])}',
+            value: '${((payment['amount'] as num?) ?? 0).toStringAsFixed(0)} ${payment['currency'] ?? 'KM'}',
+            date: '${_formatIsoDate(payment['createdAt'])} · ${_paymentStatusLabel(payment['status'])}',
+          ),
+        ),
+        if (_isFailedPayment(payment))
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: TextButton.icon(
+              onPressed: () => _retryFailedPayment(payment),
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Pokušaj uplatu ponovo'),
+            ),
+          ),
+      ],
     );
   }
 
