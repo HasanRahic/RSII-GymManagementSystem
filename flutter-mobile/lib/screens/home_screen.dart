@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../providers/auth_provider.dart';
+import '../services/notification_service.dart';
 import '../services/api_services.dart';
 import 'checkin_history_screen.dart';
 import 'checkin_screen.dart';
@@ -188,6 +189,7 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         if (!mounted) return;
         setState(() => _paidGroupSchedule = []);
+        await NotificationService.syncSessionReminders(const []);
       }
     } catch (_) {
       if (!mounted) return;
@@ -196,6 +198,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _hasActiveGroupTrainingAccess = false;
         _paidGroupSchedule = [];
       });
+      await NotificationService.syncSessionReminders(const []);
     } finally {
       if (mounted) setState(() => _loadingMembership = false);
     }
@@ -312,9 +315,11 @@ class _HomeScreenState extends State<HomeScreen> {
       final schedule = await TrainingSessionService.getMyPaidGroupSchedule();
       if (!mounted) return;
       setState(() => _paidGroupSchedule = schedule);
+      await NotificationService.syncSessionReminders(schedule);
     } catch (_) {
       if (!mounted) return;
       setState(() => _paidGroupSchedule = []);
+      await NotificationService.syncSessionReminders(const []);
     } finally {
       if (mounted) setState(() => _loadingPaidGroupSchedule = false);
     }
