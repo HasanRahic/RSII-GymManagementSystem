@@ -444,7 +444,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Rezervacija nije uspjela: $e')),
+        SnackBar(content: Text('Rezervacija nije uspjela: ${_friendlyError(e)}')),
       );
     } finally {
       if (mounted) {
@@ -478,6 +478,23 @@ class _HomeScreenState extends State<HomeScreen> {
     final mm = d.month.toString().padLeft(2, '0');
     final yyyy = d.year.toString();
     return '$dd.$mm.$yyyy';
+  }
+
+  String _friendlyError(
+    Object error, {
+    String fallback = 'Došlo je do greške. Pokušajte ponovo.',
+  }) {
+    final raw = error.toString().trim();
+    if (raw.isEmpty) return fallback;
+
+    var cleaned = raw
+        .replaceFirst('Exception: ', '')
+        .replaceFirst('ApiException: ', '')
+        .trim();
+
+    if (cleaned.isEmpty) return fallback;
+    if (cleaned.length > 220) cleaned = cleaned.substring(0, 220);
+    return cleaned;
   }
 
   Widget _skeletonBox({double height = 16, double width = double.infinity, double radius = 12}) {
@@ -654,7 +671,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       if (!mounted) return;
       scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text('Ponovni pokušaj uplate nije uspio: $e')),
+        SnackBar(content: Text('Ponovni pokušaj uplate nije uspio: ${_friendlyError(e)}')),
       );
     }
   }
@@ -864,7 +881,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Greška: $e')),
+        SnackBar(content: Text('Greška: ${_friendlyError(e)}')),
       );
     } finally {
       if (mounted) {
@@ -1189,7 +1206,7 @@ class _HomeScreenState extends State<HomeScreen> {
         } catch (e) {
           if (!mounted) return;
           scaffoldMessenger.showSnackBar(
-            SnackBar(content: Text('Greška pri otvaranju checkota: $e')),
+            SnackBar(content: Text('Greška pri otvaranju checkouta: ${_friendlyError(e)}')),
           );
         }
       } else {
@@ -1201,7 +1218,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Checkout nije uspio: $e')),
+        SnackBar(content: Text('Checkout nije uspio: ${_friendlyError(e)}')),
       );
     }
   }
@@ -1331,7 +1348,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Greška pri plaćanju članarine: $e')),
+        SnackBar(content: Text('Greška pri plaćanju članarine: ${_friendlyError(e)}')),
       );
     }
   }
@@ -1436,7 +1453,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Greška pri plaćanju grupnog treninga: $e')),
+        SnackBar(content: Text('Greška pri plaćanju grupnog treninga: ${_friendlyError(e)}')),
       );
     }
   }
