@@ -195,12 +195,39 @@ class TrainingSessionService {
   }
 
   static Future<TrainingSessionModel> reserve(int sessionId) async {
-    final data = await ApiClient.post('/training-sessions/$sessionId/reserve', {});
-    return TrainingSessionModel.fromJson(data as Map<String, dynamic>);
+    await ApiClient.post('/training-sessions/$sessionId/reserve', {});
+    final refreshed = await ApiClient.get('/training-sessions/$sessionId');
+    return TrainingSessionModel.fromJson(
+      Map<String, dynamic>.from(refreshed as Map),
+    );
   }
 
   static Future<void> cancelReservation(int sessionId) async {
     await ApiClient.delete('/training-sessions/$sessionId/reserve');
+  }
+
+  static Future<Set<int>> getMyReservationSessionIds() async {
+    final data = await ApiClient.get('/training-sessions/my-reservations') as List;
+    final ids = <int>{};
+
+    for (final item in data) {
+      if (item is! Map) continue;
+      final map = Map<String, dynamic>.from(item);
+      final rawStatus = map['status'];
+      final status = '$rawStatus'.toLowerCase();
+      final isConfirmed = rawStatus == 0 || status == 'confirmed';
+      if (!isConfirmed) continue;
+
+      final rawSessionId = map['trainingSessionId'];
+      final sessionId = rawSessionId is int
+          ? rawSessionId
+          : int.tryParse('$rawSessionId');
+      if (sessionId != null && sessionId > 0) {
+        ids.add(sessionId);
+      }
+    }
+
+    return ids;
   }
 
   static Future<List<TrainingSessionModel>> getMyReservations() async {
@@ -248,6 +275,62 @@ class CheckInService {
 
     final data = await ApiClient.get('/checkins/my$suffix') as List;
     return data.map((e) => CheckInModel.fromJson(e)).toList();
+  }
+}
+
+class ProgressService {
+  static Future<List<ProgressMeasurementModel>> getMyMeasurements({
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    final query = <String>[];
+    if (from != null) query.add('from=${Uri.encodeComponent(from.toIso8601String())}');
+    if (to != null) query.add('to=${Uri.encodeComponent(to.toIso8601String())}');
+    final suffix = query.isEmpty ? '' : '?${query.join('&')}';
+
+    final data = await ApiClient.get('/progress$suffix') as List;
+    return data
+        .map((e) => ProgressMeasurementModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  static Future<ProgressMeasurementModel> addMeasurement({
+    required DateTime date,
+    double? weightKg,
+    double? bodyFatPercent,
+    double? chestCm,
+    double? waistCm,
+    double? hipsCm,
+    double? armCm,
+    double? legCm,
+    String? notes,
+  }) async {
+    final data = await ApiClient.post('/progress', {
+      'date': date.toIso8601String(),
+      'weightKg': weightKg,
+      'bodyFatPercent': bodyFatPercent,
+      'chestCm': chestCm,
+      'waistCm': waistCm,
+      'hipsCm': hipsCm,
+      'armCm': armCm,
+      'legCm': legCm,
+      'notes': notes,
+    });
+
+    return ProgressMeasurementModel.fromJson(
+      Map<String, dynamic>.from(data as Map),
+    );
+  }
+
+  static Future<void> deleteMeasurement(int measurementId) async {
+    await ApiClient.delete('/progress/$measurementId');
+  }
+
+  static Future<List<UserBadgeModel>> getMyBadges() async {
+    final data = await ApiClient.get('/progress/badges') as List;
+    return data
+        .map((e) => UserBadgeModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 }
 

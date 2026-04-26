@@ -1,11 +1,97 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
 import '../models/models.dart';
 
 class AuthProvider extends ChangeNotifier {
+  static const _cityCachePrefix = 'cached_city_name_user_';
+  static const _userCachePrefix = 'cached_user_profile_user_';
+
   AuthResponse? _user;
   bool _loading = false;
   String? _error;
+
+  Future<void> _cacheCityName(int userId, String? cityName) async {
+    if (cityName == null || cityName.trim().isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_cityCachePrefix$userId', cityName.trim());
+  }
+
+  Future<String?> _readCachedCityName(int userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getString('$_cityCachePrefix$userId');
+    if (value == null || value.trim().isEmpty) return null;
+    return value.trim();
+  }
+
+  Future<void> _cacheUserProfile(AuthResponse user) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      '$_userCachePrefix${user.id}',
+      jsonEncode({
+        'id': user.id,
+        'firstName': user.firstName,
+        'lastName': user.lastName,
+        'username': user.username,
+        'email': user.email,
+        'phoneNumber': user.phoneNumber,
+        'cityName': user.cityName,
+        'role': user.role,
+      }),
+    );
+    await _cacheCityName(user.id, user.cityName);
+  }
+
+  Future<Map<String, dynamic>?> _readCachedUserProfile(int userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('$_userCachePrefix$userId');
+    if (raw == null || raw.trim().isEmpty) return null;
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {
+      // Ignore corrupt cached payload and fall back to API response.
+    }
+
+    return null;
+  }
+
+  String? _pickString(dynamic primary, [dynamic fallback]) {
+    final primaryText = primary?.toString().trim();
+    if (primaryText != null && primaryText.isNotEmpty) return primaryText;
+
+    final fallbackText = fallback?.toString().trim();
+    if (fallbackText != null && fallbackText.isNotEmpty) return fallbackText;
+
+    return null;
+  }
+
+  Future<AuthResponse> _buildUserFromApiData(
+    Map<String, dynamic> data,
+    String token,
+  ) async {
+    final userId = data['id'] as int;
+    final cached = await _readCachedUserProfile(userId);
+    final cityName = _pickString(data['cityName'], cached?['cityName']) ??
+        await _readCachedCityName(userId);
+
+    return AuthResponse(
+      id: userId,
+      firstName: _pickString(data['firstName'], cached?['firstName']) ?? '',
+      lastName: _pickString(data['lastName'], cached?['lastName']) ?? '',
+      username: _pickString(data['username'], cached?['username']) ?? '',
+      email: _pickString(data['email'], cached?['email']) ?? '',
+      phoneNumber: _pickString(data['phoneNumber'], cached?['phoneNumber']),
+      cityName: cityName,
+      role: data['role'] ?? cached?['role'] ?? 0,
+      token: token,
+    );
+  }
 
   AuthResponse? get user => _user;
   bool get loading => _loading;
@@ -21,21 +107,15 @@ class AuthProvider extends ChangeNotifier {
     }
 
     try {
-      final data = await ApiClient.get('/users/me');
+      final data = Map<String, dynamic>.from(
+        await ApiClient.get('/users/me') as Map,
+      );
       final token = ApiClient.currentToken;
       if (token == null) return false;
 
-      _user = AuthResponse(
-        id: data['id'],
-        firstName: data['firstName'] ?? '',
-        lastName: data['lastName'] ?? '',
-        username: data['username'] ?? '',
-        email: data['email'] ?? '',
-        phoneNumber: data['phoneNumber']?.toString(),
-        cityName: data['cityName']?.toString(),
-        role: data['role'] ?? 0,
-        token: token,
-      );
+      final user = await _buildUserFromApiData(data, token);
+      _user = user;
+      await _cacheUserProfile(user);
       notifyListeners();
       return true;
     } catch (_) {
@@ -118,21 +198,15 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> refreshMe() async {
-    final data = await ApiClient.get('/users/me');
+    final data = Map<String, dynamic>.from(
+      await ApiClient.get('/users/me') as Map,
+    );
     final token = ApiClient.currentToken;
     if (token == null) return;
 
-    _user = AuthResponse(
-      id: data['id'],
-      firstName: data['firstName'] ?? '',
-      lastName: data['lastName'] ?? '',
-      username: data['username'] ?? '',
-      email: data['email'] ?? '',
-      phoneNumber: data['phoneNumber']?.toString(),
-      cityName: data['cityName']?.toString(),
-      role: data['role'] ?? 0,
-      token: token,
-    );
+    final user = await _buildUserFromApiData(data, token);
+    _user = user;
+    await _cacheUserProfile(user);
     notifyListeners();
   }
 

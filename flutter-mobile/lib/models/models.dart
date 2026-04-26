@@ -392,3 +392,78 @@ class CheckInModel {
 
   bool get isActive => checkOutTime == null;
 }
+
+class ProgressMeasurementModel {
+  final int id;
+  final int userId;
+  final String date;
+  final double? weightKg;
+  final double? bodyFatPercent;
+  final double? chestCm;
+  final double? waistCm;
+  final double? hipsCm;
+  final double? armCm;
+  final double? legCm;
+  final String? notes;
+
+  const ProgressMeasurementModel({
+    required this.id,
+    required this.userId,
+    required this.date,
+    required this.weightKg,
+    required this.bodyFatPercent,
+    required this.chestCm,
+    required this.waistCm,
+    required this.hipsCm,
+    required this.armCm,
+    required this.legCm,
+    required this.notes,
+  });
+
+  factory ProgressMeasurementModel.fromJson(Map<String, dynamic> j) {
+    double? parseDouble(dynamic value) {
+      if (value is num) return value.toDouble();
+      return double.tryParse('$value');
+    }
+
+    return ProgressMeasurementModel(
+      id: j['id'] ?? 0,
+      userId: j['userId'] ?? 0,
+      date: (j['date'] ?? '').toString(),
+      weightKg: parseDouble(j['weightKg']),
+      bodyFatPercent: parseDouble(j['bodyFatPercent']),
+      chestCm: parseDouble(j['chestCm']),
+      waistCm: parseDouble(j['waistCm']),
+      hipsCm: parseDouble(j['hipsCm']),
+      armCm: parseDouble(j['armCm']),
+      legCm: parseDouble(j['legCm']),
+      notes: j['notes']?.toString(),
+    );
+  }
+}
+
+class UserBadgeModel {
+  final int badgeId;
+  final String name;
+  final String? description;
+  final String? iconUrl;
+  final String earnedAt;
+
+  const UserBadgeModel({
+    required this.badgeId,
+    required this.name,
+    required this.description,
+    required this.iconUrl,
+    required this.earnedAt,
+  });
+
+  factory UserBadgeModel.fromJson(Map<String, dynamic> j) {
+    return UserBadgeModel(
+      badgeId: j['badgeId'] ?? 0,
+      name: (j['name'] ?? '').toString(),
+      description: j['description']?.toString(),
+      iconUrl: j['iconUrl']?.toString(),
+      earnedAt: (j['earnedAt'] ?? '').toString(),
+    );
+  }
+}

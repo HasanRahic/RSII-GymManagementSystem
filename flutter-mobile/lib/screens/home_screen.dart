@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 import '../providers/auth_provider.dart';
@@ -64,9 +66,16 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _pendingPaymentsTimer;
   final Set<int> _reservedSessionIds = <int>{};
   final Set<int> _reservationBusyIds = <int>{};
+  bool _loadingProgressData = false;
+  bool _progressDataLoaded = false;
+  int? _reservationStateOwnerUserId;
   bool _loadingPaidGroupSchedule = true;
   List<TrainingSessionModel> _paidGroupSchedule = [];
+  List<ProgressMeasurementModel> _measurements = [];
+  List<UserBadgeModel> _badges = [];
+  List<CheckInModel> _checkInHistory = [];
   final List<_CustomTrainingEntry> _customTrainings = [];
+  int? _customTrainingsOwnerUserId;
   String _billingTypeFilter = 'Sve';
   bool _billingSortNewestFirst = true;
   static const List<int> _sessionDurationOptions = [30, 90, 180, 365];
@@ -111,6 +120,197 @@ class _HomeScreenState extends State<HomeScreen> {
     return items;
   }
 
+  String _customTrainingsStorageKey(int userId) =>
+      'custom_trainings_v1_user_$userId';
+
+  Map<String, dynamic> _customExerciseToJson(_CustomExerciseEntry exercise) => {
+        'exerciseName': exercise.exerciseName,
+        'weightKg': exercise.weightKg,
+        'reps': exercise.reps,
+      };
+
+  _CustomExerciseEntry? _customExerciseFromJson(Map<String, dynamic> map) {
+    final name = map['exerciseName']?.toString().trim() ?? '';
+    final reps = map['reps']?.toString().trim() ?? '';
+    final weightRaw = map['weightKg'];
+    final weight = weightRaw is num
+        ? weightRaw.toDouble()
+        : double.tryParse(weightRaw?.toString() ?? '');
+
+    if (name.isEmpty || reps.isEmpty || weight == null) return null;
+
+    return _CustomExerciseEntry(
+      exerciseName: name,
+      weightKg: weight,
+      reps: reps,
+    );
+  }
+
+  Map<String, dynamic> _customTrainingToJson(_CustomTrainingEntry training) => {
+        'id': training.id,
+        'name': training.name,
+        'details': training.details,
+        'createdAt': training.createdAt.toIso8601String(),
+        'completed': training.completed,
+        'completedAt': training.completedAt?.toIso8601String(),
+        'exercises':
+            training.exercises.map((exercise) => _customExerciseToJson(exercise)).toList(),
+      };
+
+  _CustomTrainingEntry? _customTrainingFromJson(Map<String, dynamic> map) {
+    final idRaw = map['id'];
+    final id = idRaw is int ? idRaw : int.tryParse(idRaw?.toString() ?? '');
+    final name = map['name']?.toString().trim() ?? '';
+    final details = map['details']?.toString().trim() ?? '';
+    final createdAtRaw = map['createdAt']?.toString();
+    final createdAt =
+        createdAtRaw == null ? null : DateTime.tryParse(createdAtRaw);
+
+    final exercisesRaw = map['exercises'];
+    if (id == null || name.isEmpty || details.isEmpty || createdAt == null) {
+      return null;
+    }
+
+    final exercises = <_CustomExerciseEntry>[];
+    if (exercisesRaw is List) {
+      for (final item in exercisesRaw) {
+        if (item is! Map) continue;
+        final parsedExercise = _customExerciseFromJson(
+          Map<String, dynamic>.from(item),
+        );
+        if (parsedExercise != null) {
+          exercises.add(parsedExercise);
+        }
+      }
+    }
+
+    if (exercises.isEmpty) {
+      final legacyWeightRaw = map['weightKg'];
+      final legacyWeight = legacyWeightRaw is num
+          ? legacyWeightRaw.toDouble()
+          : double.tryParse(legacyWeightRaw?.toString() ?? '');
+      final legacyReps = map['reps']?.toString().trim() ?? '';
+
+      if (legacyWeight != null && legacyReps.isNotEmpty) {
+        exercises.add(
+          _CustomExerciseEntry(
+            exerciseName: name,
+            weightKg: legacyWeight,
+            reps: legacyReps,
+          ),
+        );
+      }
+    }
+
+    if (exercises.isEmpty) return null;
+
+    final completed = map['completed'] == true;
+    final completedAtRaw = map['completedAt']?.toString();
+    final completedAt = completedAtRaw == null
+        ? null
+        : DateTime.tryParse(completedAtRaw);
+
+    return _CustomTrainingEntry(
+      id: id,
+      name: name,
+      details: details,
+      createdAt: createdAt,
+      completed: completed,
+      completedAt: completedAt,
+      exercises: exercises,
+    );
+  }
+
+  Future<void> _loadCustomTrainingsForCurrentUser() async {
+    final user = context.read<AuthProvider>().user;
+    if (user == null) {
+      if (!mounted) return;
+      setState(() {
+        _customTrainings.clear();
+        _customTrainingsOwnerUserId = null;
+      });
+      return;
+    }
+    if (_customTrainingsOwnerUserId == user.id) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final payload = prefs.getString(_customTrainingsStorageKey(user.id));
+
+    final loaded = <_CustomTrainingEntry>[];
+    if (payload != null && payload.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(payload);
+        if (decoded is List) {
+          for (final entry in decoded) {
+            if (entry is! Map) continue;
+            final parsed = _customTrainingFromJson(
+              Map<String, dynamic>.from(entry),
+            );
+            if (parsed != null) {
+              loaded.add(parsed);
+            }
+          }
+        }
+      } catch (_) {
+        // If persisted payload is corrupt, we ignore it and continue with empty state.
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _customTrainings
+        ..clear()
+        ..addAll(loaded);
+      _customTrainingsOwnerUserId = user.id;
+    });
+  }
+
+  Future<void> _saveCustomTrainingsForCurrentUser() async {
+    final user = context.read<AuthProvider>().user;
+    if (user == null) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = jsonEncode(
+      _customTrainings.map((training) => _customTrainingToJson(training)).toList(),
+    );
+    await prefs.setString(_customTrainingsStorageKey(user.id), encoded);
+
+    _customTrainingsOwnerUserId = user.id;
+  }
+
+  Future<void> _loadReservationStateForCurrentUser({
+    bool forceReload = false,
+  }) async {
+    final user = context.read<AuthProvider>().user;
+    if (user == null) {
+      if (!mounted) return;
+      setState(() {
+        _reservedSessionIds.clear();
+        _reservationStateOwnerUserId = null;
+      });
+      return;
+    }
+
+    if (!forceReload && _reservationStateOwnerUserId == user.id) return;
+
+    try {
+      final reservationIds = await TrainingSessionService.getMyReservationSessionIds();
+      if (!mounted) return;
+      setState(() {
+        _reservedSessionIds
+          ..clear()
+          ..addAll(reservationIds);
+        _reservationStateOwnerUserId = user.id;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _reservedSessionIds.clear();
+        _reservationStateOwnerUserId = user.id;
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -122,6 +322,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_selectedIndex == 0 || _selectedIndex == 1 || _selectedIndex == 2) {
         _ensureTrainingDataLoaded();
       }
+      if (_selectedIndex == 2 || _selectedIndex == 3) {
+        _ensureProgressDataLoaded();
+      }
       if (_selectedIndex == 3) {
         _ensureProfileDataLoaded();
       }
@@ -132,6 +335,36 @@ class _HomeScreenState extends State<HomeScreen> {
         _refreshPendingPaymentsCount();
         _resumePendingPayments();
       });
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final userId = Provider.of<AuthProvider>(context).user?.id;
+    if (_customTrainingsOwnerUserId == userId &&
+        _reservationStateOwnerUserId == userId) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      if (userId == null) {
+        setState(() {
+          _customTrainings.clear();
+          _customTrainingsOwnerUserId = null;
+          _reservedSessionIds.clear();
+          _reservationStateOwnerUserId = null;
+        });
+        return;
+      }
+
+      unawaited(_loadCustomTrainingsForCurrentUser());
+      if (_trainingDataLoaded) {
+        unawaited(_loadReservationStateForCurrentUser(forceReload: true));
+      }
     });
   }
 
@@ -261,6 +494,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         _trainingDataLoaded = true;
       });
+      await _loadReservationStateForCurrentUser(forceReload: true);
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -294,6 +528,10 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadPaidGroupSchedule();
     }
 
+    if (_selectedIndex == 2 || _selectedIndex == 3) {
+      await _ensureProgressDataLoaded(forceReload: true);
+    }
+
     if (_selectedIndex == 3) {
       await _ensureProfileDataLoaded(forceReload: true);
     }
@@ -306,6 +544,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (forceReload || _paidGroupSchedule.isEmpty) {
       await _loadPaidGroupSchedule();
+    }
+
+    if (forceReload || !_progressDataLoaded) {
+      await _ensureProgressDataLoaded(forceReload: forceReload);
     }
   }
 
@@ -336,6 +578,52 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _recentPayments = []);
     } finally {
       if (mounted) setState(() => _loadingPayments = false);
+    }
+  }
+
+  Future<void> _ensureProgressDataLoaded({bool forceReload = false}) async {
+    if (forceReload) {
+      _progressDataLoaded = false;
+    }
+
+    if (_loadingProgressData || _progressDataLoaded) return;
+    await _loadProgressData();
+  }
+
+  Future<void> _loadProgressData() async {
+    setState(() => _loadingProgressData = true);
+    try {
+      final results = await Future.wait([
+        ProgressService.getMyMeasurements(),
+        ProgressService.getMyBadges(),
+        CheckInService.getMyHistory(),
+      ]);
+
+      final measurements = results[0] as List<ProgressMeasurementModel>;
+      final badges = results[1] as List<UserBadgeModel>;
+      final history = results[2] as List<CheckInModel>;
+
+      measurements.sort((a, b) => a.date.compareTo(b.date));
+      badges.sort((a, b) => b.earnedAt.compareTo(a.earnedAt));
+      history.sort((a, b) => b.checkInTime.compareTo(a.checkInTime));
+
+      if (!mounted) return;
+      setState(() {
+        _measurements = measurements;
+        _badges = badges;
+        _checkInHistory = history;
+        _progressDataLoaded = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _measurements = [];
+        _badges = [];
+        _checkInHistory = [];
+        _progressDataLoaded = true;
+      });
+    } finally {
+      if (mounted) setState(() => _loadingProgressData = false);
     }
   }
 
@@ -495,6 +783,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (cleaned.isEmpty) return fallback;
     if (cleaned.length > 220) cleaned = cleaned.substring(0, 220);
     return cleaned;
+  }
+
+  double? _parseWeightInput(String value) {
+    final normalized = value.trim().replaceAll(',', '.').replaceAll(' ', '');
+    return double.tryParse(normalized);
   }
 
   Widget _skeletonBox({double height = 16, double width = double.infinity, double radius = 12}) {
@@ -1791,6 +2084,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (confirmed != true) return;
+    await _saveCustomTrainingsForCurrentUser();
     await auth.logout();
     if (!mounted) return;
     Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
@@ -1812,6 +2106,212 @@ class _HomeScreenState extends State<HomeScreen> {
     final hour = value.hour.toString().padLeft(2, '0');
     final minute = value.minute.toString().padLeft(2, '0');
     return '$day.$month.$year $hour:$minute';
+  }
+
+  DateTime? _tryParseDate(String raw) => DateTime.tryParse(raw)?.toLocal();
+
+  String _formatMeasurementValue(double? value, {String suffix = ''}) {
+    if (value == null) return '-';
+    final normalized = value % 1 == 0 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
+    return '$normalized$suffix';
+  }
+
+  String _monthLabel(DateTime value) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Maj',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Dec',
+    ];
+    return '${months[value.month - 1]} ${value.year}';
+  }
+
+  Future<void> _openAddMeasurementDialog() async {
+    final dateCtrl = TextEditingController(
+      text: _formatDate(DateTime.now().toIso8601String()),
+    );
+    final weightCtrl = TextEditingController();
+    final bodyFatCtrl = TextEditingController();
+    final chestCtrl = TextEditingController();
+    final waistCtrl = TextEditingController();
+    final hipsCtrl = TextEditingController();
+    final armCtrl = TextEditingController();
+    final legCtrl = TextEditingController();
+    final notesCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    DateTime selectedDate = DateTime.now();
+
+    InputDecoration decoration(String label) => InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        );
+
+    Future<void> saveMeasurement() async {
+      if (formKey.currentState?.validate() != true) return;
+
+      double? parseOptional(TextEditingController controller) {
+        final text = controller.text.trim();
+        if (text.isEmpty) return null;
+        return _parseWeightInput(text);
+      }
+
+      try {
+        await ProgressService.addMeasurement(
+          date: selectedDate,
+          weightKg: parseOptional(weightCtrl),
+          bodyFatPercent: parseOptional(bodyFatCtrl),
+          chestCm: parseOptional(chestCtrl),
+          waistCm: parseOptional(waistCtrl),
+          hipsCm: parseOptional(hipsCtrl),
+          armCm: parseOptional(armCtrl),
+          legCm: parseOptional(legCtrl),
+          notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+        );
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        await _ensureProgressDataLoaded(forceReload: true);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Mjerenje je uspješno sačuvano.')),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Mjerenje nije sačuvano: ${_friendlyError(e)}')),
+        );
+      }
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Dodaj mjerenje'),
+        content: SizedBox(
+          width: 500,
+          child: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: dateCtrl,
+                    readOnly: true,
+                    decoration: decoration('Datum').copyWith(
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.calendar_month_outlined),
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: ctx,
+                            initialDate: selectedDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now(),
+                          );
+                          if (picked == null) return;
+                          selectedDate = picked;
+                          dateCtrl.text = _formatDate(picked.toIso8601String());
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: weightCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: decoration('Težina (kg)'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextFormField(
+                          controller: bodyFatCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: decoration('Masno tkivo (%)'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: chestCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: decoration('Prsa (cm)'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextFormField(
+                          controller: waistCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: decoration('Struk (cm)'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: hipsCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: decoration('Bokovi (cm)'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextFormField(
+                          controller: armCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: decoration('Ruka (cm)'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: legCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: decoration('Noga (cm)'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: notesCtrl,
+                    maxLines: 3,
+                    decoration: decoration('Bilješke'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Odustani'),
+          ),
+          FilledButton.icon(
+            onPressed: saveMeasurement,
+            icon: const Icon(Icons.save_outlined),
+            label: const Text('Sačuvaj'),
+          ),
+        ],
+      ),
+    );
   }
 
   String _weekdayShortFromDate(String dateValue) {
@@ -1887,119 +2387,231 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openAddTrainingDialog() async {
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController();
-    final weightCtrl = TextEditingController();
-    final repsCtrl = TextEditingController();
     final detailsCtrl = TextEditingController();
+    var exerciseCount = 1;
+    final exerciseNameCtrls = <TextEditingController>[TextEditingController()];
+    final weightCtrls = <TextEditingController>[TextEditingController()];
+    final repsCtrls = <TextEditingController>[TextEditingController()];
+
+    void syncExerciseControllers(int count) {
+      while (exerciseNameCtrls.length < count) {
+        exerciseNameCtrls.add(TextEditingController());
+        weightCtrls.add(TextEditingController());
+        repsCtrls.add(TextEditingController());
+      }
+    }
 
     final saved = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Dodaj novi trening'),
-        content: SizedBox(
-          width: 460,
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextFormField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Naziv treninga',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (value) => (value == null || value.trim().isEmpty)
-                      ? 'Unesite naziv treninga.'
-                      : null,
-                ),
-                const SizedBox(height: 10),
-                Row(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: const Color(0xFFF1F2F6),
+          title: const Text('Dodaj novi trening'),
+          content: SizedBox(
+            width: 520,
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: weightCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(
-                          labelText: 'Kilaža (kg)',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) return 'Unesite kilažu.';
-                          return double.tryParse(value.replaceAll(',', '.')) == null
-                              ? 'Neispravan broj.'
-                              : null;
-                        },
+                    TextFormField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Naziv treninga',
+                        border: OutlineInputBorder(),
                       ),
+                      validator: (value) => (value == null || value.trim().isEmpty)
+                          ? 'Unesite naziv treninga.'
+                          : null,
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextFormField(
-                        controller: repsCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Ponavljanja',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) return 'Unesite ponavljanja.';
-                          return int.tryParse(value) == null ? 'Neispravan broj.' : null;
-                        },
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<int>(
+                      initialValue: exerciseCount,
+                      decoration: const InputDecoration(
+                        labelText: 'Broj vježbi',
+                        border: OutlineInputBorder(),
                       ),
+                      items: List.generate(
+                        12,
+                        (index) => DropdownMenuItem<int>(
+                          value: index + 1,
+                          child: Text('${index + 1}'),
+                        ),
+                      ),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setLocal(() {
+                          exerciseCount = value;
+                          syncExerciseControllers(exerciseCount);
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    ...List.generate(exerciseCount, (index) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F2F6),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFD4DCE8)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Vježba ${index + 1}',
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 8),
+                              TextFormField(
+                                controller: exerciseNameCtrls[index],
+                                decoration: const InputDecoration(
+                                  labelText: 'Naziv vježbe',
+                                  border: OutlineInputBorder(),
+                                ),
+                                validator: (value) => (value == null || value.trim().isEmpty)
+                                    ? 'Unesite naziv vježbe.'
+                                    : null,
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: weightCtrls[index],
+                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                      decoration: const InputDecoration(
+                                        labelText: 'Kilaža (kg)',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      validator: (value) {
+                                        if (value == null || value.trim().isEmpty) return 'Unesite kilažu.';
+                                        return _parseWeightInput(value) == null
+                                            ? 'Neispravan broj.'
+                                            : null;
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: repsCtrls[index],
+                                      keyboardType: TextInputType.text,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Ponavljanja',
+                                        hintText: 'npr. 10x3, 10-3 ili 10 3',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      validator: (value) {
+                                        if (value == null || value.trim().isEmpty) return 'Unesite ponavljanja.';
+                                        final normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+                                        final valid = RegExp(r'^\d+(?:\s*[xX\-]\s*\d+|\s+\d+)?$').hasMatch(normalized);
+                                        return valid ? null : 'Format: 10x3, 10-3 ili 10 3';
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 4),
+                    TextFormField(
+                      controller: detailsCtrl,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        labelText: 'Detalji treninga',
+                        alignLabelWithHint: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) => (value == null || value.trim().isEmpty)
+                          ? 'Dodajte detalje treninga.'
+                          : null,
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: detailsCtrl,
-                  maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: 'Detalji treninga',
-                    alignLabelWithHint: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (value) => (value == null || value.trim().isEmpty)
-                      ? 'Dodajte detalje treninga.'
-                      : null,
-                ),
-              ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Otkaži')),
+            FilledButton(
+              onPressed: () {
+                if (formKey.currentState?.validate() != true) return;
+                Navigator.pop(ctx, true);
+              },
+              child: const Text('Sačuvaj trening'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Otkaži')),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState?.validate() != true) return;
-              Navigator.pop(ctx, true);
-            },
-            child: const Text('Sačuvaj trening'),
-          ),
-        ],
       ),
     );
 
-    if (saved == true) {
-      setState(() {
-        _customTrainings.add(
-          _CustomTrainingEntry(
-            id: DateTime.now().microsecondsSinceEpoch,
-            name: nameCtrl.text.trim(),
-            weightKg: double.parse(weightCtrl.text.trim().replaceAll(',', '.')),
-            reps: int.parse(repsCtrl.text.trim()),
-            details: detailsCtrl.text.trim(),
-            createdAt: DateTime.now(),
-          ),
+    try {
+      if (saved == true) {
+        final exercises = <_CustomExerciseEntry>[];
+        for (var index = 0; index < exerciseCount; index++) {
+          final parsedWeight = _parseWeightInput(weightCtrls[index].text);
+          if (parsedWeight == null) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Neispravna kilaža za vježbu ${index + 1}.')),
+              );
+            }
+            return;
+          }
+
+          exercises.add(
+            _CustomExerciseEntry(
+              exerciseName: exerciseNameCtrls[index].text.trim(),
+              weightKg: parsedWeight,
+              reps: repsCtrls[index].text.trim(),
+            ),
+          );
+        }
+
+        setState(() {
+          _customTrainings.add(
+            _CustomTrainingEntry(
+              id: DateTime.now().microsecondsSinceEpoch,
+              name: nameCtrl.text.trim(),
+              exercises: exercises,
+              details: detailsCtrl.text.trim(),
+              createdAt: DateTime.now(),
+            ),
+          );
+        });
+        await _saveCustomTrainingsForCurrentUser();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Novi trening je dodan u Napredak.')),
         );
+      }
+    } finally {
+      // Delay dispose to avoid disposing controllers while dialog widgets are still unmounting.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        nameCtrl.dispose();
+        detailsCtrl.dispose();
+        for (final controller in exerciseNameCtrls) {
+          controller.dispose();
+        }
+        for (final controller in weightCtrls) {
+          controller.dispose();
+        }
+        for (final controller in repsCtrls) {
+          controller.dispose();
+        }
       });
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Novi trening je dodan u Napredak.')),
-      );
     }
   }
 
-  void _completeCustomTraining(_CustomTrainingEntry entry) {
+  Future<void> _completeCustomTraining(_CustomTrainingEntry entry) async {
     setState(() {
       final idx = _customTrainings.indexWhere((t) => t.id == entry.id);
       if (idx == -1) return;
@@ -2008,6 +2620,8 @@ class _HomeScreenState extends State<HomeScreen> {
         completedAt: DateTime.now(),
       );
     });
+    await _saveCustomTrainingsForCurrentUser();
+    if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Trening "${entry.name}" je prebačen u historiju.')),
@@ -2116,9 +2730,11 @@ class _HomeScreenState extends State<HomeScreen> {
       case 1:
         return _buildGymsTab();
       case 2:
-        return _buildProgressTab();
+        return _buildProgressTabV2();
       default:
-        return _buildProfileTab(context, user);
+        return _profileSection == 'Badges'
+            ? _buildBadgesTab(context, user)
+            : _buildProfileTab(context, user);
     }
   }
 
@@ -3404,7 +4020,7 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.only(bottom: 10),
               child: _CustomTrainingCard(
                 title: training.name,
-                summary: '${training.weightKg.toStringAsFixed(1)} kg · ${training.reps} ponavljanja',
+                exercises: training.exercises,
                 details: training.details,
                 createdAt: _formatDateTime(training.createdAt),
                 onComplete: () => _completeCustomTraining(training),
@@ -3425,9 +4041,413 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.only(bottom: 10),
               child: _TrainingHistoryCard(
                 title: training.name,
-                metrics: '${training.weightKg.toStringAsFixed(1)} kg · ${training.reps} ponavljanja',
+                exercises: training.exercises,
                 details: training.details,
                 completedAt: _formatDateTime(training.completedAt ?? training.createdAt),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildProgressTabV2() {
+    if ((_loadingTrainingData && !_trainingDataLoaded) ||
+        (_loadingProgressData && !_progressDataLoaded)) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final daysRemaining = _activeMembership?.daysRemaining ?? 0;
+    final now = DateTime.now();
+    final startOfMonth = DateTime(now.year, now.month, 1);
+    final checkInsThisMonth = _checkInHistory.where((item) {
+      final date = _tryParseDate(item.checkInTime);
+      return date != null && !date.isBefore(startOfMonth);
+    }).toList();
+    final weeklyVisits = <String, int>{};
+    for (final item in _checkInHistory) {
+      final date = _tryParseDate(item.checkInTime);
+      if (date == null) continue;
+      final monday = date.subtract(Duration(days: date.weekday - 1));
+      final key = '${monday.year}-${monday.month}-${monday.day}';
+      weeklyVisits[key] = (weeklyVisits[key] ?? 0) + 1;
+    }
+
+    final monthlyGoal = 12;
+    final completedThisMonth = checkInsThisMonth.length;
+    final progressRatio = monthlyGoal == 0
+        ? 0.0
+        : (completedThisMonth / monthlyGoal).clamp(0.0, 1.0);
+    final averageWeekly = weeklyVisits.isEmpty
+        ? 0
+        : (weeklyVisits.values.reduce((a, b) => a + b) / weeklyVisits.length)
+            .round();
+    final sortedMeasurements = [..._measurements]
+      ..sort((a, b) => a.date.compareTo(b.date));
+    final latestMeasurement =
+        sortedMeasurements.isEmpty ? null : sortedMeasurements.last;
+    final previousMeasurement = sortedMeasurements.length > 1
+        ? sortedMeasurements[sortedMeasurements.length - 2]
+        : null;
+    final weightDelta =
+        latestMeasurement?.weightKg != null && previousMeasurement?.weightKg != null
+            ? latestMeasurement!.weightKg! - previousMeasurement!.weightKg!
+            : null;
+    final latestWeightText = latestMeasurement?.weightKg == null
+        ? '-'
+        : '${latestMeasurement!.weightKg!.toStringAsFixed(1)} kg';
+    final weightChangeText = weightDelta == null
+        ? 'Dodajte barem 2 mjerenja'
+        : '${weightDelta >= 0 ? '+' : ''}${weightDelta.toStringAsFixed(1)} kg od zadnjeg unosa';
+
+    final mergedGroupSessionsById = <int, TrainingSessionModel>{
+      for (final s in _reservedSessions.where((s) => s.isGroup)) s.id: s,
+      for (final s in _paidGroupSchedule.where((s) => s.isGroup)) s.id: s,
+    };
+    final reservedSessions = mergedGroupSessionsById.values.toList()
+      ..sort((a, b) => _sessionStartAt(a).compareTo(_sessionStartAt(b)));
+    final upcomingGroupSessions = reservedSessions
+        .where((session) => _sessionStartAt(session).isAfter(now.subtract(const Duration(minutes: 1))))
+        .toList();
+    final reminderSessions = upcomingGroupSessions
+        .where((session) => _sessionStartAt(session).difference(now).inHours <= 48)
+        .take(3)
+        .toList();
+
+    String shortDate(String value) => value.length >= 10 ? value.substring(0, 10) : value;
+    String shortTime(String value) => value.length >= 5 ? value.substring(0, 5) : value;
+    String weekdayLabel(String value) {
+      final parsed = DateTime.tryParse(value);
+      if (parsed == null) return 'Dan nije poznat';
+      const labels = ['Pon', 'Uto', 'Sri', 'Cet', 'Pet', 'Sub', 'Ned'];
+      return labels[parsed.weekday - 1];
+    }
+
+    String reminderLabel(DateTime start) {
+      final diff = start.difference(now);
+      if (diff.inMinutes <= 120) return 'Pocinje uskoro';
+      if (diff.inHours < 24) return 'Danas';
+      return 'Sutra';
+    }
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        _TopCard(
+          title: 'Napredak i treninzi',
+          subtitle: 'Mjerite rutinu i pratite ucinak',
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _SmallMetric(
+                      title: 'Planirano',
+                      value: '$monthlyGoal',
+                      subtitle: 'cilj za ovaj mjesec',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _SmallMetric(
+                      title: 'Ostvareno',
+                      value: '$completedThisMonth',
+                      subtitle: 'check-in ovog mjeseca',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _SmallMetric(
+                      title: 'Sedmicni prosjek',
+                      value: '$averageWeekly',
+                      subtitle: 'dolazaka po sedmici',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _SmallMetric(
+                      title: 'Tezina',
+                      value: latestWeightText,
+                      subtitle: weightChangeText,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  minHeight: 8,
+                  value: progressRatio,
+                  backgroundColor: const Color(0xFFD9E2F2),
+                  valueColor: const AlwaysStoppedAnimation(Color(0xFF657BE6)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '${(progressRatio * 100).round()}% cilj postignut ($completedThisMonth/$monthlyGoal) · $daysRemaining dana aktivne clanarine',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF7A8598),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _openAddMeasurementDialog,
+                      icon: const Icon(Icons.monitor_weight_outlined),
+                      label: const Text('Dodaj mjerenje'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (ctx) => const CheckInHistoryScreen(),
+                        ),
+                      ),
+                      icon: const Icon(Icons.calendar_month_outlined),
+                      label: const Text('Dolasci'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _TopCard(
+          title: 'Mjerenja',
+          subtitle: sortedMeasurements.isEmpty
+              ? 'Jos nema sacuvanih mjerenja'
+              : 'Zadnji unos: ${_formatIsoDate(sortedMeasurements.last.date)}',
+          child: sortedMeasurements.isEmpty
+              ? const Text(
+                  'Dodajte prvo mjerenje da biste pratili tezinu, obime i promjene kroz vrijeme.',
+                  style: TextStyle(color: Color(0xFF64748B)),
+                )
+              : Column(
+                  children: [
+                    if (latestMeasurement != null)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _ProfileInfoBox(
+                              label: 'TEZINA',
+                              value: _formatMeasurementValue(
+                                latestMeasurement.weightKg,
+                                suffix: ' kg',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _ProfileInfoBox(
+                              label: 'MASNO TKIVO',
+                              value: _formatMeasurementValue(
+                                latestMeasurement.bodyFatPercent,
+                                suffix: '%',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    if (latestMeasurement != null) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _ProfileInfoBox(
+                              label: 'STRUK',
+                              value: _formatMeasurementValue(
+                                latestMeasurement.waistCm,
+                                suffix: ' cm',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _ProfileInfoBox(
+                              label: 'PRSA',
+                              value: _formatMeasurementValue(
+                                latestMeasurement.chestCm,
+                                suffix: ' cm',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Historija mjerenja',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ...sortedMeasurements.reversed.take(4).map(
+                      (measurement) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _HistoryCard(
+                          title: _monthLabel(
+                            _tryParseDate(measurement.date) ?? now,
+                          ),
+                          value:
+                              '${_formatMeasurementValue(measurement.weightKg, suffix: ' kg')} · ${_formatMeasurementValue(measurement.bodyFatPercent, suffix: '%')}',
+                          date: _formatIsoDate(measurement.date),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+        const SizedBox(height: 14),
+        if (!_loadingPaidGroupSchedule && reminderSessions.isNotEmpty) ...[
+          const _SectionTitle(icon: 'Clock', title: 'Podsjetnici'),
+          const SizedBox(height: 10),
+          ...reminderSessions.map(
+            (session) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFDE68A)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.notifications_active_outlined,
+                      color: Color(0xFFB45309),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            session.title,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${weekdayLabel(session.date)}, ${shortDate(session.date)} · ${shortTime(session.startTime)} - ${shortTime(session.endTime)}',
+                            style: const TextStyle(color: Color(0xFF92400E)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        reminderLabel(_sessionStartAt(session)),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        const _SectionTitle(icon: 'Schedule', title: 'Moji grupni termini'),
+        const SizedBox(height: 10),
+        if (_loadingPaidGroupSchedule)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (upcomingGroupSessions.isEmpty)
+          const Text(
+            'Nemate aktivnih grupnih termina. Uplatite grupni trening i termini ce se ovdje automatski prikazati.',
+            style: TextStyle(color: Color(0xFF8A94A8)),
+          )
+        else
+          ...upcomingGroupSessions.take(8).map(
+            (session) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _ScheduleCard(
+                title: session.title,
+                schedule:
+                    '${weekdayLabel(session.date)}, ${shortDate(session.date)} · ${shortTime(session.startTime)} - ${shortTime(session.endTime)}',
+                details: '${session.gymName} · Trener: ${session.trainerFullName}',
+                tag: session.isGroup ? 'GRUPNI PLACENI' : 'LICNI',
+              ),
+            ),
+          ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: _openAddTrainingDialog,
+          icon: const Icon(Icons.add),
+          label: const Text('Dodaj novi trening'),
+        ),
+        const SizedBox(height: 18),
+        const _SectionTitle(icon: 'Plan', title: 'Planirani treninzi'),
+        const SizedBox(height: 10),
+        if (_activeCustomTrainings.isEmpty)
+          const Text(
+            'Nemate rucno dodanih treninga. Kliknite "Dodaj novi trening" da kreirate plan.',
+            style: TextStyle(color: Color(0xFF8A94A8)),
+          )
+        else
+          ..._activeCustomTrainings.map(
+            (training) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _CustomTrainingCard(
+                title: training.name,
+                exercises: training.exercises,
+                details: training.details,
+                createdAt: _formatDateTime(training.createdAt),
+                onComplete: () => _completeCustomTraining(training),
+              ),
+            ),
+          ),
+        const SizedBox(height: 18),
+        const _SectionTitle(icon: 'History', title: 'Historija treninga'),
+        const SizedBox(height: 10),
+        if (_completedCustomTrainings.isEmpty)
+          const Text(
+            'Historija treninga je prazna. Oznacite trening kao zavrsen da se pojavi ovdje.',
+            style: TextStyle(color: Color(0xFF8A94A8)),
+          )
+        else
+          ..._completedCustomTrainings.map(
+            (training) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _TrainingHistoryCard(
+                title: training.name,
+                exercises: training.exercises,
+                details: training.details,
+                completedAt: _formatDateTime(
+                  training.completedAt ?? training.createdAt,
+                ),
               ),
             ),
           ),
@@ -3776,6 +4796,178 @@ class _HomeScreenState extends State<HomeScreen> {
             title: 'Badges uskoro stižu',
             message: 'Ovaj dio je trenutno rezervisan za bedževe i napredak. Sljedeći korak je dodavanje pravog progress tracking-a.',
             icon: Icons.emoji_events_outlined,
+          ),
+        ],
+        const SizedBox(height: 14),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (ctx) => const CheckInHistoryScreen()),
+          ),
+          icon: const Icon(Icons.history),
+          label: const Text('Pogledaj istoriju dolazaka'),
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: () => _confirmLogout(context.read<AuthProvider>()),
+          icon: const Icon(Icons.logout),
+          label: const Text('Odjava'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBadgesTab(BuildContext context, AuthResponse? user) {
+    final gymName = _activeMembership?.gymName ?? 'Iron Gym Sarajevo';
+    final membershipRange = _activeMembership == null
+        ? 'Nema aktivne clanarine'
+        : '${_formatDate(_activeMembership!.startDate)} - ${_formatDate(_activeMembership!.endDate)}';
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        _TopCard(
+          title: 'Moj profil',
+          subtitle: 'Bedzevi i ostvareni napredak',
+          child: Column(
+            children: [
+              const CircleAvatar(
+                radius: 42,
+                backgroundColor: Color(0xFFE0E7FF),
+                child: Icon(Icons.person, size: 46, color: Color(0xFF5D72E6)),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                user?.fullName ?? 'Korisnik',
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                user?.email ?? '',
+                style: const TextStyle(color: Color(0xFF7A8598)),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(child: _ProfileInfoBox(label: 'TERETANA', value: gymName)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _ProfileInfoBox(label: 'CLANARINA', value: membershipRange)),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: _SegmentButton(
+                label: 'Historija',
+                selected: false,
+                onTap: () => setState(() => _profileSection = 'Historija'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _SegmentButton(
+                label: 'Billing',
+                selected: false,
+                onTap: () => setState(() => _profileSection = 'Billing'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _SegmentButton(
+                label: 'Badges',
+                selected: true,
+                onTap: () {},
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_loadingProgressData)
+          const _TopCard(
+            title: 'Badges',
+            subtitle: 'Ucitavanje bedzeva',
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          )
+        else if (_badges.isEmpty)
+          _emptyStateCard(
+            title: 'Jos nema bedzeva',
+            message: 'Bedzevi se automatski dodjeljuju kroz check-in i redovne dolaske.',
+            icon: Icons.emoji_events_outlined,
+          )
+        else ...[
+          _ProfileMetricGrid(
+            items: [
+              _MetricItem(label: 'Ukupno bedzeva', value: '${_badges.length}'),
+              _MetricItem(label: 'Prvi osvojen', value: _formatIsoDate(_badges.last.earnedAt)),
+              _MetricItem(label: 'Zadnji osvojen', value: _formatIsoDate(_badges.first.earnedAt)),
+              _MetricItem(label: 'Check-in', value: '${_checkInHistory.length}'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ..._badges.map(
+            (badge) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE5ECF6)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF4D6),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.emoji_events_outlined,
+                        color: Color(0xFFB7791F),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            badge.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            badge.description ?? 'Bedz osvojen kroz aktivnost u sistemu.',
+                            style: const TextStyle(color: Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _formatIsoDate(badge.earnedAt),
+                      style: const TextStyle(
+                        color: Color(0xFF8A94A8),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
         const SizedBox(height: 14),
@@ -4530,14 +5722,14 @@ class _ScheduleCard extends StatelessWidget {
 
 class _CustomTrainingCard extends StatelessWidget {
   final String title;
-  final String summary;
+  final List<_CustomExerciseEntry> exercises;
   final String details;
   final String createdAt;
   final VoidCallback onComplete;
 
   const _CustomTrainingCard({
     required this.title,
-    required this.summary,
+    required this.exercises,
     required this.details,
     required this.createdAt,
     required this.onComplete,
@@ -4557,7 +5749,17 @@ class _CustomTrainingCard extends StatelessWidget {
         children: [
           Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
-          Text(summary, style: const TextStyle(color: Color(0xFF51607A), fontWeight: FontWeight.w700)),
+          Text('${exercises.length} vježbi', style: const TextStyle(color: Color(0xFF51607A), fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          ...exercises.map(
+            (exercise) => Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text(
+                '• ${exercise.exerciseName} · ${exercise.weightKg.toStringAsFixed(1)} kg · ${exercise.reps} pon.',
+                style: const TextStyle(color: Color(0xFF64748B)),
+              ),
+            ),
+          ),
           const SizedBox(height: 6),
           Text(details, style: const TextStyle(color: Color(0xFF64748B))),
           const SizedBox(height: 8),
@@ -4584,13 +5786,13 @@ class _CustomTrainingCard extends StatelessWidget {
 
 class _TrainingHistoryCard extends StatelessWidget {
   final String title;
-  final String metrics;
+  final List<_CustomExerciseEntry> exercises;
   final String details;
   final String completedAt;
 
   const _TrainingHistoryCard({
     required this.title,
-    required this.metrics,
+    required this.exercises,
     required this.details,
     required this.completedAt,
   });
@@ -4609,7 +5811,17 @@ class _TrainingHistoryCard extends StatelessWidget {
         children: [
           Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
-          Text(metrics, style: const TextStyle(color: Color(0xFF51607A), fontWeight: FontWeight.w700)),
+          Text('${exercises.length} vježbi', style: const TextStyle(color: Color(0xFF51607A), fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          ...exercises.map(
+            (exercise) => Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text(
+                '• ${exercise.exerciseName} · ${exercise.weightKg.toStringAsFixed(1)} kg · ${exercise.reps} pon.',
+                style: const TextStyle(color: Color(0xFF64748B)),
+              ),
+            ),
+          ),
           const SizedBox(height: 6),
           Text(details, style: const TextStyle(color: Color(0xFF64748B))),
           const SizedBox(height: 8),
@@ -4626,8 +5838,7 @@ class _TrainingHistoryCard extends StatelessWidget {
 class _CustomTrainingEntry {
   final int id;
   final String name;
-  final double weightKg;
-  final int reps;
+  final List<_CustomExerciseEntry> exercises;
   final String details;
   final DateTime createdAt;
   final bool completed;
@@ -4636,8 +5847,7 @@ class _CustomTrainingEntry {
   const _CustomTrainingEntry({
     required this.id,
     required this.name,
-    required this.weightKg,
-    required this.reps,
+    required this.exercises,
     required this.details,
     required this.createdAt,
     this.completed = false,
@@ -4651,14 +5861,25 @@ class _CustomTrainingEntry {
     return _CustomTrainingEntry(
       id: id,
       name: name,
-      weightKg: weightKg,
-      reps: reps,
+      exercises: exercises,
       details: details,
       createdAt: createdAt,
       completed: completed ?? this.completed,
       completedAt: completedAt ?? this.completedAt,
     );
   }
+}
+
+class _CustomExerciseEntry {
+  final String exerciseName;
+  final double weightKg;
+  final String reps;
+
+  const _CustomExerciseEntry({
+    required this.exerciseName,
+    required this.weightKg,
+    required this.reps,
+  });
 }
 
 class _SessionOffer {
