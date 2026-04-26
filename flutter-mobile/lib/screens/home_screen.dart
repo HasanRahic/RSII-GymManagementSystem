@@ -3520,32 +3520,88 @@ class _HomeScreenState extends State<HomeScreen> {
       sessionsByGym.putIfAbsent(session.gymId, () => []).add(session);
     }
 
-    final trainerMap = <String, Set<String>>{};
-    final trainerGymIds = <String, Set<int>>{};
+    final trainerSessionMap = <int, List<TrainingSessionModel>>{};
     for (final session in _sessions.where((session) => session.isActive)) {
-      final name = session.trainerFullName.trim().isEmpty ? 'Trener #${session.trainerId}' : session.trainerFullName;
-      trainerMap.putIfAbsent(name, () => <String>{}).add(session.trainingTypeName);
-      trainerGymIds.putIfAbsent(name, () => <int>{}).add(session.gymId);
+      trainerSessionMap.putIfAbsent(session.trainerId, () => <TrainingSessionModel>[]).add(session);
     }
 
-    bool trainerMatches(String name, Set<String> types, Set<int> gymIds) {
+    bool trainerMatches(_TrainerDirectoryData trainer) {
       final cityMatches = selectedCity == 'Svi gradovi' ||
-          gymIds.any((id) => (gymById[id]?.cityName.toLowerCase().contains(selectedCity.toLowerCase()) ?? false));
-      final typeMatches = selectedType == null || types.any((type) => type.toLowerCase() == selectedType);
+          trainer.cityNames.any((city) => city.toLowerCase().contains(selectedCity.toLowerCase()));
+      final typeMatches = selectedType == null ||
+          trainer.specializations.any((type) => type.toLowerCase() == selectedType);
       final searchMatches = search.isEmpty ||
-          name.toLowerCase().contains(search) ||
-          types.any((type) => type.toLowerCase().contains(search));
+          trainer.name.toLowerCase().contains(search) ||
+          trainer.headline.toLowerCase().contains(search) ||
+          trainer.specializations.any((type) => type.toLowerCase().contains(search)) ||
+          trainer.gymNames.any((gymName) => gymName.toLowerCase().contains(search));
       return cityMatches && typeMatches && searchMatches;
     }
 
-    final trainerCards = trainerMap.entries
-        .where((entry) => trainerMatches(entry.key, entry.value, trainerGymIds[entry.key] ?? <int>{}))
-        .map(
-          (entry) => _TrainerPreviewData(
-            name: entry.key,
-            role: '${entry.value.take(2).join(' & ')} instruktor',
-          ),
-        )
+    final trainerCards = trainerSessionMap.entries
+        .map((entry) {
+          final sessions = entry.value;
+          final firstSession = sessions.first;
+          final name = firstSession.trainerFullName.trim().isEmpty
+              ? 'Trener #${firstSession.trainerId}'
+              : firstSession.trainerFullName;
+          final specializations = <String>{
+            ...sessions
+                .map((session) => session.trainingTypeName.trim())
+                .where((name) => name.isNotEmpty),
+          }.toList()
+            ..sort();
+          final gymNames = <String>{
+            ...sessions
+                .map((session) => session.gymName.trim())
+                .where((name) => name.isNotEmpty),
+          }.toList()
+            ..sort();
+          final cityNames = <String>{
+            for (final session in sessions)
+              if (gymById[session.gymId] != null) gymById[session.gymId]!.cityName,
+          }.toList()
+            ..sort();
+          final nextSessionAt = sessions
+              .map(_sessionStartAt)
+              .where((date) => date.isAfter(DateTime.now()))
+              .fold<DateTime?>(null, (current, value) {
+            if (current == null) return value;
+            return value.isBefore(current) ? value : current;
+          });
+          final averageLoad = sessions.isEmpty
+              ? 0.0
+              : sessions.fold<double>(
+                    0,
+                    (sum, session) =>
+                        sum +
+                        (session.maxParticipants == 0
+                            ? 0
+                            : session.currentParticipants / session.maxParticipants),
+                  ) /
+                  sessions.length;
+          final rating = (4.0 + (averageLoad * 0.9) + (sessions.length >= 5 ? 0.1 : 0))
+              .clamp(4.0, 5.0)
+              .toStringAsFixed(1);
+
+          return _TrainerDirectoryData(
+            trainerId: firstSession.trainerId,
+            name: name,
+            headline: specializations.isEmpty
+                ? 'Personalni trener'
+                : '${specializations.take(2).join(' • ')} trener',
+            rating: rating,
+            sessionCount: sessions.length,
+            groupSessionCount: sessions.where((session) => session.isGroup).length,
+            specializations: specializations,
+            gymNames: gymNames,
+            cityNames: cityNames,
+            nextAvailableLabel: nextSessionAt == null
+                ? 'Nema buducih termina'
+                : '${nextSessionAt.day.toString().padLeft(2, '0')}.${nextSessionAt.month.toString().padLeft(2, '0')}.${nextSessionAt.year} u ${nextSessionAt.hour.toString().padLeft(2, '0')}:${nextSessionAt.minute.toString().padLeft(2, '0')}',
+          );
+        })
+        .where(trainerMatches)
         .toList()
       ..sort((a, b) => a.name.compareTo(b.name));
 
@@ -3791,9 +3847,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ...trainerCards.map(
               (trainer) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: _TrainerPreviewCard(
-                  name: trainer.name,
-                  role: trainer.role,
+                child: _TrainerDirectoryCard(
+                  trainer: trainer,
+                  onProfile: () => _openTrainerProfile(trainer),
                 ),
               ),
             ),
@@ -3841,6 +3897,157 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
         ],
       ],
+    );
+  }
+
+  Future<void> _openTrainerProfile(_TrainerDirectoryData trainer) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+          decoration: const BoxDecoration(
+            color: Color(0xFFF6F8FC),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 44,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD6DDEA),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    const CircleAvatar(
+                      radius: 28,
+                      backgroundColor: Color(0xFF657BE6),
+                      child: Icon(Icons.fitness_center, color: Colors.white),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            trainer.name,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF1E293B),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            trainer.headline,
+                            style: const TextStyle(
+                              color: Color(0xFF657BE6),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF4D6),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '★ ${trainer.rating}',
+                        style: const TextStyle(
+                          color: Color(0xFF9A6700),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _ProfileMetricGrid(
+                  items: [
+                    _MetricItem(label: 'Ukupno sesija', value: '${trainer.sessionCount}'),
+                    _MetricItem(label: 'Grupni treninzi', value: '${trainer.groupSessionCount}'),
+                    _MetricItem(label: 'Teretane', value: '${trainer.gymNames.length}'),
+                    _MetricItem(label: 'Gradovi', value: '${trainer.cityNames.length}'),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                _TopCard(
+                  title: 'Dostupnost',
+                  subtitle: 'Sljedeci termin',
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      trainer.nextAvailableLabel,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _TopCard(
+                  title: 'Specijalizacije',
+                  subtitle: 'Tipovi treninga koje trener vodi',
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: trainer.specializations
+                        .map(
+                          (item) => Chip(
+                            label: Text(item),
+                            backgroundColor: const Color(0xFFE8EEFF),
+                            labelStyle: const TextStyle(
+                              color: Color(0xFF4F63D2),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _TopCard(
+                  title: 'Lokacije',
+                  subtitle: 'Teretane i gradovi',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        trainer.gymNames.join(', '),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        trainer.cityNames.join(', '),
+                        style: const TextStyle(color: Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -5177,6 +5384,168 @@ class _SectionTitle extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _TrainerDirectoryData {
+  final int trainerId;
+  final String name;
+  final String headline;
+  final String rating;
+  final int sessionCount;
+  final int groupSessionCount;
+  final List<String> specializations;
+  final List<String> gymNames;
+  final List<String> cityNames;
+  final String nextAvailableLabel;
+
+  const _TrainerDirectoryData({
+    required this.trainerId,
+    required this.name,
+    required this.headline,
+    required this.rating,
+    required this.sessionCount,
+    required this.groupSessionCount,
+    required this.specializations,
+    required this.gymNames,
+    required this.cityNames,
+    required this.nextAvailableLabel,
+  });
+}
+
+class _TrainerDirectoryCard extends StatelessWidget {
+  final _TrainerDirectoryData trainer;
+  final VoidCallback onProfile;
+
+  const _TrainerDirectoryCard({
+    required this.trainer,
+    required this.onProfile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const CircleAvatar(
+                radius: 23,
+                backgroundColor: Color(0xFF657BE6),
+                child: Icon(Icons.fitness_center, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      trainer.name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF2A3448),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      trainer.headline,
+                      style: const TextStyle(
+                        color: Color(0xFF657BE6),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF4D6),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '* ${trainer.rating}',
+                  style: const TextStyle(
+                    color: Color(0xFF9A6700),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: trainer.specializations
+                  .take(3)
+                  .map(
+                    (item) => Chip(
+                      label: Text(item),
+                      backgroundColor: const Color(0xFFF3F6FC),
+                      labelStyle: const TextStyle(
+                        color: Color(0xFF4B5563),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${trainer.gymNames.length} teretane · ${trainer.cityNames.join(', ')}',
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${trainer.sessionCount} sesija',
+                style: const TextStyle(
+                  color: Color(0xFF8A94A8),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Sljedeci termin: ${trainer.nextAvailableLabel}',
+                  style: const TextStyle(color: Color(0xFF64748B)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton(
+                onPressed: onProfile,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF657BE6),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Profil'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

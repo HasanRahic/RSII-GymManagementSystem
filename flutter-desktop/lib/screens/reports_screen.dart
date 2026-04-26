@@ -1,6 +1,10 @@
+import 'dart:io';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 import '../core/constants.dart';
 import '../models/models.dart';
@@ -79,6 +83,194 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
     if (picked == null) return;
     setState(() => _to = picked);
+  }
+
+  Future<void> _exportCsv() async {
+    if (_rows.isEmpty) return;
+
+    try {
+      final rows = <List<String>>[
+        ['Clan', 'Teretana', 'Dolazak', 'Odlazak', 'Trajanje (min)'],
+        ..._rows.map(
+          (row) => [
+            row.userFullName,
+            row.gymName,
+            _fmtDt(row.checkInTime),
+            row.checkOutTime == null ? '-' : _fmtDt(row.checkOutTime!),
+            row.durationMinutes?.toString() ?? 'Aktivan',
+          ],
+        ),
+      ];
+
+      final csv = rows.map((row) => row.map(_csvCell).join(',')).join('\n');
+      final file = File(
+        '${_exportDirectory().path}\\${_buildExportBaseName()}.csv',
+      );
+      await file.writeAsString(csv);
+
+      if (!mounted) return;
+      _showExportMessage('CSV izvjestaj sacuvan: ${file.path}');
+    } catch (e) {
+      if (!mounted) return;
+      _showExportMessage('CSV export nije uspio: $e', isError: true);
+    }
+  }
+
+  Future<void> _exportPdf() async {
+    if (_rows.isEmpty) return;
+
+    try {
+      final activeNow = _rows.where((r) => r.checkOutTime == null).length;
+      final finished = _rows.where((r) => r.durationMinutes != null).toList();
+      final avgDuration = finished.isEmpty
+          ? 0
+          : (finished
+                      .map((e) => e.durationMinutes!)
+                      .reduce((a, b) => a + b) /
+                  finished.length)
+              .round();
+
+      final document = pw.Document();
+      final revenueLabel = NumberFormat('#,##0.00', 'bs').format(_revenue);
+
+      document.addPage(
+        pw.MultiPage(
+          build: (context) => [
+            pw.Text(
+              'Gym Management Report',
+              style: pw.TextStyle(
+                fontSize: 22,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.SizedBox(height: 8),
+            pw.Text(
+              'Period: ${DateFormat('dd.MM.yyyy').format(_from)} - ${DateFormat('dd.MM.yyyy').format(_to)}',
+            ),
+            pw.Text(
+              'Teretana: ${_gymId == null ? 'Sve teretane' : _gyms.firstWhere((gym) => gym.id == _gymId).name}',
+            ),
+            pw.SizedBox(height: 16),
+            pw.Wrap(
+              spacing: 16,
+              runSpacing: 8,
+              children: [
+                _pdfMetric('Prihod', '$revenueLabel KM'),
+                _pdfMetric('Ukupno check-in', '${_rows.length}'),
+                _pdfMetric('Aktivni trenutno', '$activeNow'),
+                _pdfMetric('Prosjecno trajanje', '$avgDuration min'),
+              ],
+            ),
+            pw.SizedBox(height: 18),
+            pw.TableHelper.fromTextArray(
+              headers: const [
+                'Clan',
+                'Teretana',
+                'Dolazak',
+                'Odlazak',
+                'Trajanje',
+              ],
+              data: _rows
+                  .map(
+                    (row) => [
+                      row.userFullName,
+                      row.gymName,
+                      _fmtDt(row.checkInTime),
+                      row.checkOutTime == null ? '-' : _fmtDt(row.checkOutTime!),
+                      row.durationMinutes == null
+                          ? 'Aktivan'
+                          : '${row.durationMinutes} min',
+                    ],
+                  )
+                  .toList(),
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              headerDecoration: const pw.BoxDecoration(
+                color: PdfColor.fromInt(0xFFE2E8F0),
+              ),
+              cellHeight: 24,
+              cellAlignments: {
+                0: pw.Alignment.centerLeft,
+                1: pw.Alignment.centerLeft,
+                2: pw.Alignment.centerLeft,
+                3: pw.Alignment.centerLeft,
+                4: pw.Alignment.centerLeft,
+              },
+            ),
+          ],
+        ),
+      );
+
+      final bytes = await document.save();
+      final file = File(
+        '${_exportDirectory().path}\\${_buildExportBaseName()}.pdf',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+
+      if (!mounted) return;
+      _showExportMessage('PDF izvjestaj sacuvan: ${file.path}');
+    } catch (e) {
+      if (!mounted) return;
+      _showExportMessage('PDF export nije uspio: $e', isError: true);
+    }
+  }
+
+  Directory _exportDirectory() {
+    final userProfile = Platform.environment['USERPROFILE'];
+    if (userProfile != null && userProfile.isNotEmpty) {
+      final downloads = Directory('$userProfile\\Downloads');
+      if (downloads.existsSync()) {
+        return downloads;
+      }
+      return Directory(userProfile);
+    }
+
+    return Directory.current;
+  }
+
+  String _buildExportBaseName() {
+    final fromLabel = DateFormat('yyyyMMdd').format(_from);
+    final toLabel = DateFormat('yyyyMMdd').format(_to);
+    final gymLabel = _gymId == null ? 'all' : 'gym_$_gymId';
+    return 'gym_report_${gymLabel}_$fromLabel-$toLabel';
+  }
+
+  String _csvCell(String value) {
+    final escaped = value.replaceAll('"', '""');
+    return '"$escaped"';
+  }
+
+  void _showExportMessage(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? kRed : kGreen,
+      ),
+    );
+  }
+
+  pw.Widget _pdfMetric(String label, String value) {
+    return pw.Container(
+      width: 120,
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColor.fromInt(0xFFD1D5DB)),
+        borderRadius: pw.BorderRadius.circular(6),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(label, style: const pw.TextStyle(fontSize: 10)),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            value,
+            style: pw.TextStyle(
+              fontSize: 14,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -237,6 +429,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
             foregroundColor: Colors.white,
           ),
           label: const Text('Primijeni'),
+        ),
+        OutlinedButton.icon(
+          onPressed: _loading || _rows.isEmpty ? null : _exportCsv,
+          icon: const Icon(Icons.table_view_outlined),
+          label: const Text('Export CSV'),
+        ),
+        OutlinedButton.icon(
+          onPressed: _loading || _rows.isEmpty ? null : _exportPdf,
+          icon: const Icon(Icons.picture_as_pdf_outlined),
+          label: const Text('Export PDF'),
         ),
       ],
     );
