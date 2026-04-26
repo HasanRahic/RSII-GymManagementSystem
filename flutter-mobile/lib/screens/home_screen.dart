@@ -3650,7 +3650,32 @@ class _HomeScreenState extends State<HomeScreen> {
             title: 'Zadnje transakcije',
             subtitle: billingPayments.isEmpty ? 'Nema transakcija za odabrani filter' : 'Posljednjih ${billingPayments.length > 3 ? 3 : billingPayments.length}',
             child: billingPayments.isEmpty
-                ? const Text('Još nema završenih transakcija.', style: TextStyle(color: Color(0xFF64748B)))
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Još nema završenih transakcija.',
+                        style: TextStyle(color: Color(0xFF64748B)),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => setState(() => _selectedIndex = _hasGymAccess ? 0 : 1),
+                            icon: const Icon(Icons.storefront_outlined),
+                            label: Text(_hasGymAccess ? 'Idi na Home' : 'Pregledaj ponude'),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: _loadPayments,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Osvježi uplate'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
