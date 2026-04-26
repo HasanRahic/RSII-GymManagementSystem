@@ -45,3 +45,32 @@ public record SessionReservationDto(
     ReservationStatus Status,
     DateTime ReservedAt
 );
+
+public record RecommendedGymDto(
+    int GymId,
+    string GymName,
+    double Score,
+    string Reason,
+    IReadOnlyList<string> MatchedTrainingTypes
+);
+
+public record TrainerProfileDto(
+    int TrainerId,
+    string FullName,
+    string? Biography,
+    string? Experience,
+    string? Certifications,
+    string? Availability,
+    string? PhoneNumber,
+    string? Email,
+    string? CityName,
+    double Rating,
+    int SessionCount,
+    int GroupSessionCount,
+    int GymCount,
+    int CityCount,
+    DateTime? NextAvailableAt,
+    IReadOnlyList<string> TrainingTypes,
+    IReadOnlyList<string> GymNames,
+    IReadOnlyList<string> CityNames
+);

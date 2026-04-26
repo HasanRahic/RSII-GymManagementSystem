@@ -46,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<MembershipPlanModel> _plans = [];
   List<TrainingSessionModel> _sessions = [];
   List<String> _cities = ['Svi gradovi'];
+  List<TrainingTypeModel> _trainingTypeCatalog = [];
   List<String> _trainingTypes = [];
   final List<_ShopCartItem> _shopCart = [];
   final List<_ShopProduct> _shopProducts = const [
@@ -74,6 +75,10 @@ class _HomeScreenState extends State<HomeScreen> {
   List<ProgressMeasurementModel> _measurements = [];
   List<UserBadgeModel> _badges = [];
   List<CheckInModel> _checkInHistory = [];
+  List<TrainerProfileModel> _trainerProfiles = [];
+  List<RecommendedGymModel> _recommendedGyms = [];
+  bool _loadingDiscoveryData = false;
+  Timer? _discoveryDebounce;
   final List<_CustomTrainingEntry> _customTrainings = [];
   int? _customTrainingsOwnerUserId;
   String _billingTypeFilter = 'Sve';
@@ -122,6 +127,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _customTrainingsStorageKey(int userId) =>
       'custom_trainings_v1_user_$userId';
+
+  int? get _selectedTrainingTypeId {
+    final selected = _selectedTrainingType?.trim().toLowerCase();
+    if (selected == null || selected.isEmpty) return null;
+    for (final item in _trainingTypeCatalog) {
+      if (item.name.trim().toLowerCase() == selected) {
+        return item.id;
+      }
+    }
+    return null;
+  }
 
   Map<String, dynamic> _customExerciseToJson(_CustomExerciseEntry exercise) => {
         'exerciseName': exercise.exerciseName,
@@ -377,6 +393,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _pendingPaymentsTimer?.cancel();
+    _discoveryDebounce?.cancel();
     _gymSearchCtrl.dispose();
     _shopSearchCtrl.dispose();
     super.dispose();
@@ -487,6 +504,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() {
         _sessions = sessions;
+        _trainingTypeCatalog = trainingTypes;
         _cities = ['Svi gradovi', ...cities.map((c) => c.name).toSet()];
         _trainingTypes = trainingTypes.map((t) => t.name).toList();
         if (!_cities.contains(_selectedCity)) {
@@ -495,12 +513,16 @@ class _HomeScreenState extends State<HomeScreen> {
         _trainingDataLoaded = true;
       });
       await _loadReservationStateForCurrentUser(forceReload: true);
+      await _loadDiscoveryData();
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _sessions = [];
+        _trainingTypeCatalog = [];
         _cities = ['Svi gradovi'];
         _trainingTypes = [];
+        _trainerProfiles = [];
+        _recommendedGyms = [];
         _trainingDataLoaded = true;
       });
     } finally {
@@ -516,6 +538,46 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadTrainingData();
   }
 
+  void _scheduleDiscoveryRefresh() {
+    _discoveryDebounce?.cancel();
+    _discoveryDebounce = Timer(const Duration(milliseconds: 300), () {
+      unawaited(_loadDiscoveryData());
+    });
+  }
+
+  Future<void> _loadDiscoveryData() async {
+    if (_loadingDiscoveryData) return;
+
+    setState(() => _loadingDiscoveryData = true);
+    try {
+      final results = await Future.wait([
+        TrainingSessionService.getRecommendedGyms(
+          city: _selectedCity,
+          trainingTypeId: _selectedTrainingTypeId,
+        ),
+        TrainingSessionService.getTrainerProfiles(
+          city: _selectedCity,
+          trainingTypeId: _selectedTrainingTypeId,
+          search: _gymSearchCtrl.text.trim(),
+        ),
+      ]);
+
+      if (!mounted) return;
+      setState(() {
+        _recommendedGyms = results[0] as List<RecommendedGymModel>;
+        _trainerProfiles = results[1] as List<TrainerProfileModel>;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _recommendedGyms = [];
+        _trainerProfiles = [];
+      });
+    } finally {
+      if (mounted) setState(() => _loadingDiscoveryData = false);
+    }
+  }
+
   Future<void> _refreshAll() async {
     await Future.wait([
       _loadMembership(),
@@ -526,6 +588,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_selectedIndex == 0 || _selectedIndex == 1 || _selectedIndex == 2) {
       await _ensureTrainingDataLoaded(forceReload: true);
       await _loadPaidGroupSchedule();
+      await _loadDiscoveryData();
     }
 
     if (_selectedIndex == 2 || _selectedIndex == 3) {
@@ -3510,6 +3573,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final user = context.read<AuthProvider>().user;
     final search = _gymSearchCtrl.text.trim().toLowerCase();
     final selectedCity = _selectedCity;
     final selectedType = _selectedTrainingType?.trim().toLowerCase();
@@ -3605,6 +3669,34 @@ class _HomeScreenState extends State<HomeScreen> {
         .toList()
       ..sort((a, b) => a.name.compareTo(b.name));
 
+    final backendTrainerCards = _trainerProfiles
+        .map(
+          (trainer) => _TrainerDirectoryData(
+            trainerId: trainer.trainerId,
+            name: trainer.fullName,
+            headline: trainer.trainingTypes.isEmpty
+                ? 'Personalni trener'
+                : '${trainer.trainingTypes.take(2).join(' • ')} trener',
+            rating: trainer.rating.toStringAsFixed(1),
+            sessionCount: trainer.sessionCount,
+            groupSessionCount: trainer.groupSessionCount,
+            specializations: trainer.trainingTypes,
+            gymNames: trainer.gymNames,
+            cityNames: trainer.cityNames,
+            nextAvailableLabel: _formatTrainerNextAvailable(trainer.nextAvailableAt),
+            biography: trainer.biography,
+            experience: trainer.experience,
+            certifications: trainer.certifications,
+            availability: trainer.availability,
+            email: trainer.email,
+            phoneNumber: trainer.phoneNumber,
+          ),
+        )
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    final displayedTrainerCards =
+        backendTrainerCards.isNotEmpty ? backendTrainerCards : trainerCards;
+
     List<String> tagsForGym(GymModel gym) {
       final tags = <String>{
         ...?sessionsByGym[gym.id]?.map((session) => session.trainingTypeName).where((name) => name.isNotEmpty),
@@ -3630,26 +3722,127 @@ class _HomeScreenState extends State<HomeScreen> {
       return cityMatches && typeMatches && searchMatches;
     }
 
+    final reservedAndPaidSessions = [
+      ..._reservedSessions,
+      ..._paidGroupSchedule,
+    ];
+    final preferredTypeWeights = <String, int>{};
+    final visitedGymNames = <String, int>{};
+
+    for (final session in reservedAndPaidSessions) {
+      final typeName = session.trainingTypeName.trim().toLowerCase();
+      if (typeName.isNotEmpty) {
+        preferredTypeWeights[typeName] = (preferredTypeWeights[typeName] ?? 0) + 3;
+      }
+    }
+
+    for (final history in _checkInHistory) {
+      final gymName = history.gymName.trim().toLowerCase();
+      if (gymName.isNotEmpty) {
+        visitedGymNames[gymName] = (visitedGymNames[gymName] ?? 0) + 2;
+      }
+    }
+
+    if (_selectedTrainingType != null && _selectedTrainingType!.trim().isNotEmpty) {
+      final selected = _selectedTrainingType!.trim().toLowerCase();
+      preferredTypeWeights[selected] = (preferredTypeWeights[selected] ?? 0) + 5;
+    }
+
+    for (final training in _completedCustomTrainings) {
+      for (final exercise in training.exercises) {
+        final exerciseName = exercise.exerciseName.toLowerCase();
+        if (exerciseName.contains('cardio') || exerciseName.contains('traka')) {
+          preferredTypeWeights['kardio'] = (preferredTypeWeights['kardio'] ?? 0) + 1;
+        }
+        if (exerciseName.contains('bench') ||
+            exerciseName.contains('squat') ||
+            exerciseName.contains('deadlift') ||
+            exerciseName.contains('teg')) {
+          preferredTypeWeights['utezi'] = (preferredTypeWeights['utezi'] ?? 0) + 1;
+        }
+      }
+    }
+
+    double recommendationScore(GymModel gym) {
+      double score = 0;
+      final sessions = sessionsByGym[gym.id] ?? const <TrainingSessionModel>[];
+
+      if (gym.isOpen) score += 2;
+      if (_activeMembership?.gymName.toLowerCase() == gym.name.toLowerCase()) {
+        score += 4;
+      }
+      if ((user?.cityName ?? '').trim().isNotEmpty &&
+          gym.cityName.toLowerCase() == user!.cityName!.toLowerCase()) {
+        score += 1.5;
+      }
+      if (visitedGymNames.containsKey(gym.name.toLowerCase())) {
+        score += visitedGymNames[gym.name.toLowerCase()]!.toDouble();
+      }
+
+      for (final session in sessions) {
+        final typeName = session.trainingTypeName.trim().toLowerCase();
+        score += (preferredTypeWeights[typeName] ?? 0) * 1.25;
+        if (typeName == selectedType) {
+          score += 2;
+        }
+      }
+
+      final occupancyRatio = gym.capacity == 0 ? 0.0 : gym.currentOccupancy / gym.capacity;
+      if (occupancyRatio >= 0.35 && occupancyRatio <= 0.85) {
+        score += 1.2;
+      } else if (occupancyRatio < 0.2) {
+        score += 0.5;
+      }
+
+      score += sessions.length * 0.15;
+      return score;
+    }
+
     final visibleGyms = _gyms.where(matchesGym).toList();
-    final openGyms = visibleGyms.where((gym) => gym.isOpen).toList()
-      ..sort((a, b) => b.currentOccupancy.compareTo(a.currentOccupancy));
+    final rankedGyms = [...visibleGyms]
+      ..sort((a, b) => recommendationScore(b).compareTo(recommendationScore(a)));
 
-    final highlyRecommended = openGyms.take(2).toList();
+    final highlyRecommended = rankedGyms.take(2).toList();
 
-    final recommendedSource = visibleGyms.where((gym) =>
-        !highlyRecommended.any((featured) => featured.id == gym.id) &&
-        (selectedType == null
-            ? (sessionsByGym[gym.id]?.any((session) => ['yoga', 'pilates'].contains(session.trainingTypeName.toLowerCase())) ?? false)
-            : (sessionsByGym[gym.id]?.any((session) => session.trainingTypeName.toLowerCase() == selectedType) ?? false)));
+    final recommendedSource = rankedGyms.where(
+      (gym) => !highlyRecommended.any((featured) => featured.id == gym.id),
+    );
     final recommendedForYou = recommendedSource.isNotEmpty
         ? recommendedSource.take(2).toList()
-        : visibleGyms.where((gym) => !highlyRecommended.any((featured) => featured.id == gym.id)).take(2).toList();
+        : rankedGyms.where((gym) => !highlyRecommended.any((featured) => featured.id == gym.id)).take(2).toList();
 
     final otherGyms = visibleGyms
         .where((gym) =>
             !highlyRecommended.any((featured) => featured.id == gym.id) &&
             !recommendedForYou.any((recommended) => recommended.id == gym.id))
         .toList();
+
+    final preferenceLabels = preferredTypeWeights.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final recommendationReason = selectedType != null
+        ? 'Na osnovu odabranog tipa treninga: $_selectedTrainingType'
+        : preferenceLabels.isNotEmpty
+            ? 'Na osnovu vase aktivnosti: ${preferenceLabels.take(2).map((entry) => entry.key).join(', ')}'
+            : _activeMembership != null
+                ? 'Na osnovu vase aktivne clanarine i posjecenosti'
+                : 'Na osnovu dostupnih termina i aktivnosti clanova';
+
+    final recommendationByGymId = {
+      for (final item in _recommendedGyms) item.gymId: item,
+    };
+    final backendRankedGyms = visibleGyms
+        .where((gym) => recommendationByGymId.containsKey(gym.id))
+        .toList()
+      ..sort((a, b) {
+        final left = recommendationByGymId[a.id]!.score;
+        final right = recommendationByGymId[b.id]!.score;
+        return right.compareTo(left);
+      });
+    final displayedHighlyRecommended =
+        backendRankedGyms.isNotEmpty ? backendRankedGyms.take(2).toList() : highlyRecommended;
+    final displayedRecommendedForYou = backendRankedGyms.length > 2
+        ? backendRankedGyms.skip(2).take(2).toList()
+        : recommendedForYou;
 
     String ratingFromGym(GymModel gym) {
       final ratio = gym.capacity == 0 ? 0.0 : (gym.currentOccupancy / gym.capacity);
@@ -3681,7 +3874,10 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         TextField(
           controller: _gymSearchCtrl,
-          onChanged: (_) => setState(() {}),
+          onChanged: (_) {
+            setState(() {});
+            _scheduleDiscoveryRefresh();
+          },
           decoration: InputDecoration(
             hintText: 'Pretraži teretane i trenere...',
             prefixIcon: const Icon(Icons.search),
@@ -3762,6 +3958,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onChanged: (value) {
                 if (value == null) return;
                 setState(() => _selectedCity = value);
+                _scheduleDiscoveryRefresh();
               },
             ),
           ),
@@ -3786,6 +3983,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     setState(() {
                       _selectedTrainingType = _selectedTrainingType == type ? null : type;
                     });
+                    _scheduleDiscoveryRefresh();
                   },
                 ),
               )
@@ -3837,14 +4035,19 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 18),
         if (_showTrainers) ...[
           Text(
-            '${trainerCards.length} trenera',
+            '${displayedTrainerCards.length} trenera',
             style: const TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
-          if (trainerCards.isEmpty)
+          if (_loadingDiscoveryData && displayedTrainerCards.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (displayedTrainerCards.isEmpty)
             const Text('Nema trenera za odabrane filtere.', style: TextStyle(color: Color(0xFF8A94A8)))
           else
-            ...trainerCards.map(
+            ...displayedTrainerCards.map(
               (trainer) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: _TrainerDirectoryCard(
@@ -3858,10 +4061,15 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 6),
           const Text('Najbolje ocijenjene teretane sa 4.5+ zvjezdica', style: TextStyle(color: Color(0xFF8A94A8))),
           const SizedBox(height: 12),
-          if (highlyRecommended.isEmpty)
+          if (_loadingDiscoveryData && displayedHighlyRecommended.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (displayedHighlyRecommended.isEmpty)
             const Text('Nema rezultata za odabrane filtere.', style: TextStyle(color: Color(0xFF8A94A8)))
           else
-            ...highlyRecommended.map(
+            ...displayedHighlyRecommended.map(
               (gym) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: buildGymCard(gym),
@@ -3872,10 +4080,17 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 6),
           const Text('Na osnovu vaših preferencija: Yoga, Pilates', style: TextStyle(color: Color(0xFF8A94A8))),
           const SizedBox(height: 12),
-          if (recommendedForYou.isEmpty)
+          Text(recommendationReason, style: const TextStyle(color: Color(0xFF8A94A8))),
+          const SizedBox(height: 4),
+          if (_loadingDiscoveryData && displayedRecommendedForYou.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (displayedRecommendedForYou.isEmpty)
             const Text('Nema preporuka za trenutni filter.', style: TextStyle(color: Color(0xFF8A94A8)))
           else
-            ...recommendedForYou.map(
+            ...displayedRecommendedForYou.map(
               (gym) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: buildGymCard(gym),
@@ -3898,6 +4113,17 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ],
     );
+  }
+
+  String _formatTrainerNextAvailable(String? rawValue) {
+    if (rawValue == null || rawValue.trim().isEmpty) {
+      return 'Nema buducih termina';
+    }
+
+    final parsed = DateTime.tryParse(rawValue)?.toLocal();
+    if (parsed == null) return rawValue;
+
+    return '${parsed.day.toString().padLeft(2, '0')}.${parsed.month.toString().padLeft(2, '0')}.${parsed.year} u ${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
   }
 
   Future<void> _openTrainerProfile(_TrainerDirectoryData trainer) async {
@@ -4043,6 +4269,70 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 ),
+                if ((trainer.biography ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _TopCard(
+                    title: 'Biografija',
+                    subtitle: 'Predstavljenje trenera',
+                    child: Text(
+                      trainer.biography!,
+                      style: const TextStyle(color: Color(0xFF475569), height: 1.5),
+                    ),
+                  ),
+                ],
+                if ((trainer.experience ?? '').trim().isNotEmpty ||
+                    (trainer.certifications ?? '').trim().isNotEmpty ||
+                    (trainer.availability ?? '').trim().isNotEmpty ||
+                    (trainer.email ?? '').trim().isNotEmpty ||
+                    (trainer.phoneNumber ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _TopCard(
+                    title: 'Dodatne informacije',
+                    subtitle: 'Iskustvo i kontakt',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if ((trainer.experience ?? '').trim().isNotEmpty)
+                          Text(
+                            'Iskustvo: ${trainer.experience}',
+                            style: const TextStyle(color: Color(0xFF475569), height: 1.5),
+                          ),
+                        if ((trainer.certifications ?? '').trim().isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              'Certifikati: ${trainer.certifications}',
+                              style: const TextStyle(color: Color(0xFF475569), height: 1.5),
+                            ),
+                          ),
+                        if ((trainer.availability ?? '').trim().isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              'Dostupnost: ${trainer.availability}',
+                              style: const TextStyle(color: Color(0xFF475569), height: 1.5),
+                            ),
+                          ),
+                        if ((trainer.email ?? '').trim().isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              'Email: ${trainer.email}',
+                              style: const TextStyle(color: Color(0xFF475569), height: 1.5),
+                            ),
+                          ),
+                        if ((trainer.phoneNumber ?? '').trim().isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              'Telefon: ${trainer.phoneNumber}',
+                              style: const TextStyle(color: Color(0xFF475569), height: 1.5),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -4051,6 +4341,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildProgressTab() {
     if (_loadingTrainingData && !_trainingDataLoaded) {
       return const Center(child: CircularProgressIndicator());
@@ -5399,6 +5690,12 @@ class _TrainerDirectoryData {
   final List<String> gymNames;
   final List<String> cityNames;
   final String nextAvailableLabel;
+  final String? biography;
+  final String? experience;
+  final String? certifications;
+  final String? availability;
+  final String? email;
+  final String? phoneNumber;
 
   const _TrainerDirectoryData({
     required this.trainerId,
@@ -5411,6 +5708,12 @@ class _TrainerDirectoryData {
     required this.gymNames,
     required this.cityNames,
     required this.nextAvailableLabel,
+    this.biography,
+    this.experience,
+    this.certifications,
+    this.availability,
+    this.email,
+    this.phoneNumber,
   });
 }
 
@@ -5550,6 +5853,7 @@ class _TrainerDirectoryCard extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _TrainerPreviewData {
   final String name;
   final String role;
@@ -5560,6 +5864,7 @@ class _TrainerPreviewData {
   });
 }
 
+// ignore: unused_element
 class _TrainerPreviewCard extends StatelessWidget {
   final String name;
   final String role;

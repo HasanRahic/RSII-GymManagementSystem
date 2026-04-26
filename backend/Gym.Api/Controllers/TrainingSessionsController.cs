@@ -18,6 +18,23 @@ public class TrainingSessionsController(ITrainingSessionService sessionService) 
         [FromQuery] int? trainingTypeId)
         => Ok(await sessionService.GetAllAsync(gymId, trainerId, trainingTypeId));
 
+    [HttpGet("recommendations")]
+    public async Task<IActionResult> GetRecommendations(
+        [FromQuery] string? city,
+        [FromQuery] int? trainingTypeId)
+    {
+        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
+        return Ok(await sessionService.GetRecommendedGymsAsync(userId, city, trainingTypeId));
+    }
+
+    [HttpGet("trainers")]
+    public async Task<IActionResult> GetTrainerProfiles(
+        [FromQuery] string? city,
+        [FromQuery] int? trainingTypeId,
+        [FromQuery] string? search)
+        => Ok(await sessionService.GetTrainerProfilesAsync(city, trainingTypeId, search));
+
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {

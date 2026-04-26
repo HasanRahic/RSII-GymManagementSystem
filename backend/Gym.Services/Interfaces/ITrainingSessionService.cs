@@ -12,4 +12,6 @@ public interface ITrainingSessionService
     Task CancelReservationAsync(int userId, int reservationId);
     Task<IEnumerable<SessionReservationDto>> GetUserReservationsAsync(int userId);
     Task<IEnumerable<TrainingSessionDto>> GetUserPaidGroupScheduleAsync(int userId);
+    Task<IEnumerable<RecommendedGymDto>> GetRecommendedGymsAsync(int userId, string? city, int? trainingTypeId);
+    Task<IEnumerable<TrainerProfileDto>> GetTrainerProfilesAsync(string? city, int? trainingTypeId, string? search);
 }

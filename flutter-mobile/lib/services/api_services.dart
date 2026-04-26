@@ -239,6 +239,46 @@ class TrainingSessionService {
     final data = await ApiClient.get('/training-sessions/my-paid-group-schedule') as List;
     return data.map((e) => TrainingSessionModel.fromJson(e)).toList();
   }
+
+  static Future<List<RecommendedGymModel>> getRecommendedGyms({
+    String? city,
+    int? trainingTypeId,
+  }) async {
+    final query = <String>[];
+    if (city != null && city.trim().isNotEmpty && city != 'Svi gradovi') {
+      query.add('city=${Uri.encodeComponent(city.trim())}');
+    }
+    if (trainingTypeId != null) {
+      query.add('trainingTypeId=$trainingTypeId');
+    }
+    final suffix = query.isEmpty ? '' : '?${query.join('&')}';
+    final data = await ApiClient.get('/training-sessions/recommendations$suffix') as List;
+    return data
+        .map((e) => RecommendedGymModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  static Future<List<TrainerProfileModel>> getTrainerProfiles({
+    String? city,
+    int? trainingTypeId,
+    String? search,
+  }) async {
+    final query = <String>[];
+    if (city != null && city.trim().isNotEmpty && city != 'Svi gradovi') {
+      query.add('city=${Uri.encodeComponent(city.trim())}');
+    }
+    if (trainingTypeId != null) {
+      query.add('trainingTypeId=$trainingTypeId');
+    }
+    if (search != null && search.trim().isNotEmpty) {
+      query.add('search=${Uri.encodeComponent(search.trim())}');
+    }
+    final suffix = query.isEmpty ? '' : '?${query.join('&')}';
+    final data = await ApiClient.get('/training-sessions/trainers$suffix') as List;
+    return data
+        .map((e) => TrainerProfileModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
 }
 
 class ReferenceService {

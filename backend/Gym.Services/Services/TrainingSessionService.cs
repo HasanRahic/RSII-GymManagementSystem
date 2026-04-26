@@ -195,6 +195,259 @@ public class TrainingSessionService : ITrainingSessionService
         return sessions.Select(ToDto);
     }
 
+    public async Task<IEnumerable<RecommendedGymDto>> GetRecommendedGymsAsync(
+        int userId,
+        string? city,
+        int? trainingTypeId)
+    {
+        var normalizedCity = city?.Trim().ToLowerInvariant();
+
+        var user = await _context.Users
+            .AsNoTracking()
+            .Include(u => u.City)
+            .Include(u => u.Memberships)
+            .FirstOrDefaultAsync(u => u.Id == userId)
+            ?? throw new KeyNotFoundException("Korisnik nije pronađen.");
+
+        var checkIns = await _context.CheckIns
+            .AsNoTracking()
+            .Include(c => c.Gym)
+            .Where(c => c.UserId == userId)
+            .ToListAsync();
+
+        var reservedSessions = await _context.SessionReservations
+            .AsNoTracking()
+            .Include(r => r.TrainingSession)
+            .ThenInclude(s => s.TrainingType)
+            .Where(r => r.UserId == userId && r.Status == ReservationStatus.Confirmed)
+            .Select(r => r.TrainingSession)
+            .ToListAsync();
+
+        var paidGroupSessions = await _context.Payments
+            .AsNoTracking()
+            .Include(p => p.SessionReservation)
+            .ThenInclude(r => r!.TrainingSession)
+            .ThenInclude(s => s.TrainingType)
+            .Where(p =>
+                p.UserId == userId &&
+                p.Status == PaymentStatus.Succeeded &&
+                p.SessionReservation != null &&
+                p.SessionReservation.TrainingSession.IsActive)
+            .Select(p => p.SessionReservation!.TrainingSession)
+            .ToListAsync();
+
+        var preferredTypes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var session in reservedSessions.Concat(paidGroupSessions))
+        {
+            var key = session.TrainingType.Name.Trim();
+            if (string.IsNullOrWhiteSpace(key)) continue;
+            preferredTypes[key] = (preferredTypes.TryGetValue(key, out var count) ? count : 0) + 3;
+        }
+
+        var visitedGyms = checkIns
+            .GroupBy(c => c.Gym.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
+        var gyms = await _context.Gyms
+            .AsNoTracking()
+            .Include(g => g.City)
+            .Include(g => g.TrainingSessions.Where(s => s.IsActive))
+            .ThenInclude(s => s.TrainingType)
+            .Where(g => string.IsNullOrWhiteSpace(normalizedCity) || g.City.Name.ToLower() == normalizedCity)
+            .ToListAsync();
+
+        var results = gyms
+            .Select(gym =>
+            {
+                double score = 0;
+                var matchedTypes = new List<string>();
+
+                if (gym.Status == GymStatus.Open) score += 2;
+                if (!string.IsNullOrWhiteSpace(user.City?.Name) &&
+                    string.Equals(user.City!.Name, gym.City.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    score += 1.5;
+                }
+
+                if (user.PrimaryGymId == gym.Id)
+                {
+                    score += 4;
+                }
+
+                if (visitedGyms.TryGetValue(gym.Name.Trim(), out var visitCount))
+                {
+                    score += visitCount * 2;
+                }
+
+                foreach (var session in gym.TrainingSessions)
+                {
+                    if (trainingTypeId.HasValue && session.TrainingTypeId == trainingTypeId.Value)
+                    {
+                        score += 3;
+                    }
+
+                    var typeName = session.TrainingType.Name.Trim();
+                    if (preferredTypes.TryGetValue(typeName, out var weight))
+                    {
+                        score += weight * 1.25;
+                        matchedTypes.Add(typeName);
+                    }
+                }
+
+                var occupancyRatio = gym.Capacity == 0 ? 0 : (double)gym.CurrentOccupancy / gym.Capacity;
+                if (occupancyRatio >= 0.35 && occupancyRatio <= 0.85) score += 1.2;
+                else if (occupancyRatio < 0.2) score += 0.5;
+
+                score += gym.TrainingSessions.Count * 0.15;
+
+                var reason = trainingTypeId.HasValue
+                    ? "Podudaranje s odabranim tipom treninga"
+                    : matchedTypes.Count > 0
+                        ? $"Na osnovu vaše aktivnosti: {string.Join(", ", matchedTypes.Distinct().Take(2))}"
+                        : user.PrimaryGymId == gym.Id
+                            ? "Preporuka na osnovu vaše aktivne teretane"
+                            : "Dobra dostupnost termina i posjećenosti";
+
+                return new RecommendedGymDto(
+                    gym.Id,
+                    gym.Name,
+                    Math.Round(score, 2),
+                    reason,
+                    matchedTypes
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Take(4)
+                        .ToList());
+            })
+            .OrderByDescending(x => x.Score)
+            .ThenBy(x => x.GymName)
+            .Take(8)
+            .ToList();
+
+        return results;
+    }
+
+    public async Task<IEnumerable<TrainerProfileDto>> GetTrainerProfilesAsync(
+        string? city,
+        int? trainingTypeId,
+        string? search)
+    {
+        var normalizedCity = city?.Trim().ToLowerInvariant();
+        var normalizedSearch = search?.Trim().ToLowerInvariant();
+        var now = DateTime.UtcNow;
+
+        var sessions = await _context.TrainingSessions
+            .AsNoTracking()
+            .Include(s => s.Trainer)
+            .ThenInclude(t => t.City)
+            .Include(s => s.Gym)
+            .ThenInclude(g => g.City)
+            .Include(s => s.TrainingType)
+            .Include(s => s.Reservations)
+            .Where(s => s.IsActive && (!trainingTypeId.HasValue || s.TrainingTypeId == trainingTypeId.Value))
+            .ToListAsync();
+
+        var trainerIds = sessions.Select(s => s.TrainerId).Distinct().ToList();
+        var trainerApplications = await _context.TrainerApplications
+            .AsNoTracking()
+            .Where(a => trainerIds.Contains(a.UserId))
+            .GroupBy(a => a.UserId)
+            .Select(g => g.OrderByDescending(a => a.SubmittedAt).First())
+            .ToListAsync();
+
+        var applicationByTrainerId = trainerApplications.ToDictionary(a => a.UserId);
+
+        var profiles = sessions
+            .GroupBy(s => s.TrainerId)
+            .Select(group =>
+            {
+                var first = group.First();
+                var trainer = first.Trainer;
+                if (!string.IsNullOrWhiteSpace(normalizedCity) &&
+                    !group.Any(s => string.Equals(s.Gym.City.Name, normalizedCity, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return null;
+                }
+
+                var trainingTypes = group
+                    .Select(s => s.TrainingType.Name.Trim())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(x => x)
+                    .ToList();
+                var gymNames = group
+                    .Select(s => s.Gym.Name.Trim())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(x => x)
+                    .ToList();
+                var cityNames = group
+                    .Select(s => s.Gym.City.Name.Trim())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(x => x)
+                    .ToList();
+
+                var nextAvailableAt = group
+                    .Select(s => s.Date.Date + s.StartTime.ToTimeSpan())
+                    .Where(x => x >= now)
+                    .OrderBy(x => x)
+                    .Cast<DateTime?>()
+                    .FirstOrDefault();
+
+                var avgOccupancy = group.Any()
+                    ? group.Average(s => s.MaxParticipants == 0
+                        ? 0
+                        : (double)s.Reservations.Count(r => r.Status == ReservationStatus.Confirmed) / s.MaxParticipants)
+                    : 0;
+                var rating = Math.Round(Math.Clamp(4.0 + (avgOccupancy * 0.9) + (group.Count() >= 5 ? 0.1 : 0), 4.0, 5.0), 1);
+
+                applicationByTrainerId.TryGetValue(group.Key, out var application);
+
+                var fullName = $"{trainer.FirstName} {trainer.LastName}".Trim();
+                var haystack = string.Join(" ", new[]
+                {
+                    fullName,
+                    application?.Biography,
+                    application?.Experience,
+                    string.Join(" ", trainingTypes),
+                    string.Join(" ", gymNames),
+                    string.Join(" ", cityNames),
+                }).ToLowerInvariant();
+
+                if (!string.IsNullOrWhiteSpace(normalizedSearch) && !haystack.Contains(normalizedSearch))
+                {
+                    return null;
+                }
+
+                return new TrainerProfileDto(
+                    trainer.Id,
+                    fullName,
+                    application?.Biography,
+                    application?.Experience,
+                    application?.Certifications,
+                    application?.Availability,
+                    trainer.PhoneNumber,
+                    trainer.Email,
+                    trainer.City?.Name,
+                    rating,
+                    group.Count(),
+                    group.Count(s => s.Type == SessionType.Group),
+                    gymNames.Count,
+                    cityNames.Count,
+                    nextAvailableAt,
+                    trainingTypes,
+                    gymNames,
+                    cityNames);
+            })
+            .Where(x => x is not null)
+            .Cast<TrainerProfileDto>()
+            .OrderByDescending(x => x.Rating)
+            .ThenBy(x => x.FullName)
+            .ToList();
+
+        return profiles;
+    }
+
     private static string BuildProgramKey(
         int gymId,
         int trainerId,
