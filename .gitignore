@@ -48,6 +48,8 @@
 
 # Logs
 *.log
+/.dotnet-build.log
+/.dotnet-build-project.log
 
 # Accidental root-level build artifacts (e.g., CMake tooling output)
 /build/

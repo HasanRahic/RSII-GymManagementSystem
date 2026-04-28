@@ -4,8 +4,8 @@ Seminarski rad iz predmeta Razvoj softvera II. Projekat sadrzi:
 
 - `backend/Gym.Api` REST API
 - `backend/Gym.Notifications` pomocni mikroservis za RabbitMQ notifikacije
-- `flutter-desktop` administratorsku desktop aplikaciju
-- `flutter-mobile` mobilnu aplikaciju za clanove i trenere
+- `apps/flutter-desktop` administratorsku desktop aplikaciju
+- `apps/flutter-mobile` mobilnu aplikaciju za clanove i trenere
 
 ## Arhitektura
 
@@ -93,7 +93,7 @@ Napomena: projekat koristi vise korisnickih uloga, pa su login nalozi imenovani 
 ## Pokretanje desktop aplikacije
 
 ```powershell
-cd .\flutter-desktop
+cd .\apps\flutter-desktop
 flutter pub get
 flutter run -d windows
 ```
@@ -107,7 +107,7 @@ flutter run -d windows --dart-define=SERVER_BASE_URL=http://localhost:5000
 ## Pokretanje mobilne aplikacije
 
 ```powershell
-cd .\flutter-mobile
+cd .\apps\flutter-mobile
 flutter pub get
 flutter run
 ```
@@ -123,44 +123,52 @@ flutter run --dart-define=SERVER_BASE_URL=http://10.0.2.2:5000
 Android release:
 
 ```powershell
-cd .\flutter-mobile
+cd .\apps\flutter-mobile
 flutter clean
 flutter build apk --release
 ```
 
 Ocekivani izlaz:
 
-- `flutter-mobile/build/app/outputs/flutter-apk/app-release.apk`
+- `apps/flutter-mobile/build/app/outputs/flutter-apk/app-release.apk`
 
 Windows release:
 
 ```powershell
-cd .\flutter-desktop
+cd .\apps\flutter-desktop
 flutter clean
 flutter build windows --release
 ```
 
 Ocekivani izlaz:
 
-- `flutter-desktop/build/windows/x64/runner/Release/gym_desktop.exe`
+- `apps/flutter-desktop/build/windows/x64/runner/Release/gym_desktop.exe`
 
 Za pripremu arhive za predaju koristi skriptu:
 
 ```powershell
-.\run-backend.ps1
-.\submission\build-submission.ps1
+.\resources\scripts\run-backend.ps1
+.\resources\scripts\build-submission.ps1
 ```
 
 ## Recommender dokumentacija
 
 Dokumentacija sistema preporuke nalazi se u:
 
-- `docs/recommender-dokumentacija.pdf`
+- `resources/docs/recommender-dokumentacija.pdf`
 
 Izvorni markdown za dokumentaciju:
 
-- `docs/recommender-dokumentacija.md`
+- `resources/docs/recommender-dokumentacija.md`
 
 ## Napomena za evaluaciju
 
 Projekat je pripremljen tako da se moze pokrenuti bez izmjene source koda. Za promjenu API adrese koristi se iskljucivo konfiguracija (`appsettings`, `.env`, `--dart-define`), ne rucna izmjena fajlova.
+
+## Struktura repozitorija
+
+- `backend/` backend servisi i domena
+- `apps/` Flutter desktop i mobilna aplikacija
+- `resources/docs/` dokumentacija i recommender prilozi
+- `resources/submission/` predajni artefakti za profesora
+- `resources/scripts/` pomocne skripte za pokretanje i pripremu predaje

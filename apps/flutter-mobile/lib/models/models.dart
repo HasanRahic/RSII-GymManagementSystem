@@ -1,0 +1,578 @@
+enum UserRole { admin, member, trainer }
+
+class AuthResponse {
+  final int id;
+  final String firstName;
+  final String lastName;
+  final String username;
+  final String email;
+  final String? phoneNumber;
+  final String? cityName;
+  final int role;
+  final String token;
+
+  AuthResponse({
+    required this.id,
+    required this.firstName,
+    required this.lastName,
+    required this.username,
+    required this.email,
+    required this.phoneNumber,
+    required this.cityName,
+    required this.role,
+    required this.token,
+  });
+
+  factory AuthResponse.fromJson(Map<String, dynamic> j) {
+    return AuthResponse(
+      id: j['id'],
+      firstName: j['firstName'],
+      lastName: j['lastName'],
+      username: j['username'],
+      email: j['email'],
+      phoneNumber: j['phoneNumber']?.toString(),
+      cityName: j['cityName']?.toString(),
+      role: j['role'],
+      token: j['token'],
+    );
+  }
+
+  String get fullName => '$firstName $lastName';
+  UserRole get userRole => UserRole.values[role];
+
+  static const roleLabels = ['Admin', 'Clan', 'Trener'];
+  String get roleLabel => roleLabels[role];
+}
+
+class GymModel {
+  final int id;
+  final String name;
+  final String address;
+  final String? description;
+  final String? phoneNumber;
+  final String? email;
+  final String? imageUrl;
+  final String openTime;
+  final String closeTime;
+  final int capacity;
+  final int currentOccupancy;
+  final int status;
+  final double? latitude;
+  final double? longitude;
+  final int cityId;
+  final String cityName;
+  final String countryName;
+
+  GymModel({
+    required this.id,
+    required this.name,
+    required this.address,
+    required this.description,
+    required this.phoneNumber,
+    required this.email,
+    required this.imageUrl,
+    required this.openTime,
+    required this.closeTime,
+    required this.capacity,
+    required this.currentOccupancy,
+    required this.status,
+    required this.latitude,
+    required this.longitude,
+    required this.cityId,
+    required this.cityName,
+    required this.countryName,
+  });
+
+  factory GymModel.fromJson(Map<String, dynamic> j) {
+    return GymModel(
+      id: j['id'],
+      name: j['name'],
+      address: (j['address'] ?? '').toString(),
+      description: j['description']?.toString(),
+      phoneNumber: j['phoneNumber']?.toString(),
+      email: j['email']?.toString(),
+      imageUrl: j['imageUrl']?.toString(),
+      openTime: (j['openTime'] ?? '').toString(),
+      closeTime: (j['closeTime'] ?? '').toString(),
+      capacity: j['capacity'] ?? 0,
+      currentOccupancy: j['currentOccupancy'] ?? 0,
+      status: j['status'] is num ? (j['status'] as num).toInt() : 0,
+      latitude: (j['latitude'] as num?)?.toDouble(),
+      longitude: (j['longitude'] as num?)?.toDouble(),
+      cityId: j['cityId'] ?? 0,
+      cityName: (j['cityName'] ?? '').toString(),
+      countryName: (j['countryName'] ?? '').toString(),
+    );
+  }
+
+  bool get isOpen => status == 0;
+  String get statusLabel => isOpen ? 'ONLINE' : 'OFFLINE';
+}
+
+class MembershipPlanModel {
+  final int id;
+  final String name;
+  final String? description;
+  final int durationDays;
+  final double price;
+  final bool isActive;
+  final int gymId;
+  final String gymName;
+
+  MembershipPlanModel({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.durationDays,
+    required this.price,
+    required this.isActive,
+    required this.gymId,
+    required this.gymName,
+  });
+
+  factory MembershipPlanModel.fromJson(Map<String, dynamic> j) {
+    return MembershipPlanModel(
+      id: j['id'],
+      name: j['name'],
+      description: j['description']?.toString(),
+      durationDays: j['durationDays'] ?? 0,
+      price: (j['price'] as num).toDouble(),
+      isActive: j['isActive'] ?? true,
+      gymId: j['gymId'] ?? 0,
+      gymName: (j['gymName'] ?? '').toString(),
+    );
+  }
+}
+
+class TrainingSessionModel {
+  final int id;
+  final String title;
+  final String? description;
+  final int type;
+  final String date;
+  final String startTime;
+  final String endTime;
+  final int maxParticipants;
+  final int currentParticipants;
+  final double price;
+  final bool isActive;
+  final int trainerId;
+  final String trainerFullName;
+  final int gymId;
+  final String gymName;
+  final int trainingTypeId;
+  final String trainingTypeName;
+
+  TrainingSessionModel({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.type,
+    required this.date,
+    required this.startTime,
+    required this.endTime,
+    required this.maxParticipants,
+    required this.currentParticipants,
+    required this.price,
+    required this.isActive,
+    required this.trainerId,
+    required this.trainerFullName,
+    required this.gymId,
+    required this.gymName,
+    required this.trainingTypeId,
+    required this.trainingTypeName,
+  });
+
+  factory TrainingSessionModel.fromJson(Map<String, dynamic> j) {
+    return TrainingSessionModel(
+      id: j['id'],
+      title: j['title'],
+      description: j['description']?.toString(),
+      type: j['type'] is num ? (j['type'] as num).toInt() : 0,
+      date: (j['date'] ?? '').toString(),
+      startTime: (j['startTime'] ?? '').toString(),
+      endTime: (j['endTime'] ?? '').toString(),
+      maxParticipants: j['maxParticipants'] ?? 0,
+      currentParticipants: j['currentParticipants'] ?? 0,
+      price: (j['price'] as num).toDouble(),
+      isActive: j['isActive'] ?? true,
+      trainerId: j['trainerId'] ?? 0,
+      trainerFullName: (j['trainerFullName'] ?? '').toString(),
+      gymId: j['gymId'] ?? 0,
+      gymName: (j['gymName'] ?? '').toString(),
+      trainingTypeId: j['trainingTypeId'] ?? 0,
+      trainingTypeName: (j['trainingTypeName'] ?? '').toString(),
+    );
+  }
+
+  bool get isGroup => type == 1;
+}
+
+class CityModel {
+  final int id;
+  final String name;
+  final String? postalCode;
+  final int countryId;
+  final String countryName;
+
+  CityModel({
+    required this.id,
+    required this.name,
+    required this.postalCode,
+    required this.countryId,
+    required this.countryName,
+  });
+
+  factory CityModel.fromJson(Map<String, dynamic> j) {
+    return CityModel(
+      id: j['id'],
+      name: j['name'],
+      postalCode: j['postalCode']?.toString(),
+      countryId: j['countryId'] ?? 0,
+      countryName: (j['countryName'] ?? '').toString(),
+    );
+  }
+}
+
+class TrainingTypeModel {
+  final int id;
+  final String name;
+  final String? description;
+
+  TrainingTypeModel({
+    required this.id,
+    required this.name,
+    required this.description,
+  });
+
+  factory TrainingTypeModel.fromJson(Map<String, dynamic> j) {
+    return TrainingTypeModel(
+      id: j['id'],
+      name: j['name'],
+      description: j['description']?.toString(),
+    );
+  }
+}
+
+class UserMembership {
+  final int id;
+  final int membershipPlanId;
+  final String planName;
+  final String gymName;
+  final String startDate;
+  final String endDate;
+  final double price;
+  final int status;
+  final int daysRemaining;
+
+  UserMembership({
+    required this.id,
+    required this.membershipPlanId,
+    required this.planName,
+    required this.gymName,
+    required this.startDate,
+    required this.endDate,
+    required this.price,
+    required this.status,
+    required this.daysRemaining,
+  });
+
+  factory UserMembership.fromJson(Map<String, dynamic> j) {
+    int parseStatus(dynamic raw) {
+      if (raw is int) return raw;
+      final text = '$raw'.toLowerCase();
+      if (text == 'active') return 0;
+      if (text == 'expired') return 1;
+      if (text == 'cancelled' || text == 'canceled') return 2;
+      return int.tryParse(text) ?? 1;
+    }
+
+    int parseDays(dynamic raw) {
+      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
+      return int.tryParse('$raw') ?? 0;
+    }
+
+    return UserMembership(
+      id: j['id'],
+      membershipPlanId: j['membershipPlanId'],
+      planName: j['planName'],
+      gymName: j['gymName'],
+      startDate: j['startDate'],
+      endDate: j['endDate'],
+      price: (j['price'] as num).toDouble(),
+      status: parseStatus(j['status']),
+      daysRemaining: parseDays(j['daysRemaining']),
+    );
+  }
+
+  static const statusLabels = ['Aktivna', 'Istekla', 'Otkazana'];
+  String get statusLabel {
+    if (status >= 0 && status < statusLabels.length) {
+      return statusLabels[status];
+    }
+    return 'Nepoznat status';
+  }
+}
+
+class TrainerApplicationModel {
+  final int id;
+  final int userId;
+  final String userFullName;
+  final String userEmail;
+  final String biography;
+  final String experience;
+  final String? certifications;
+  final String? availability;
+  final int status;
+  final String? adminNote;
+  final String submittedAt;
+  final String? reviewedAt;
+
+  TrainerApplicationModel({
+    required this.id,
+    required this.userId,
+    required this.userFullName,
+    required this.userEmail,
+    required this.biography,
+    required this.experience,
+    required this.certifications,
+    required this.availability,
+    required this.status,
+    required this.adminNote,
+    required this.submittedAt,
+    required this.reviewedAt,
+  });
+
+  factory TrainerApplicationModel.fromJson(Map<String, dynamic> j) {
+    return TrainerApplicationModel(
+      id: j['id'],
+      userId: j['userId'],
+      userFullName: j['userFullName'],
+      userEmail: j['userEmail'],
+      biography: j['biography'],
+      experience: j['experience'],
+      certifications: j['certifications']?.toString(),
+      availability: j['availability']?.toString(),
+      status: j['status'],
+      adminNote: j['adminNote']?.toString(),
+      submittedAt: j['submittedAt'],
+      reviewedAt: j['reviewedAt']?.toString(),
+    );
+  }
+
+  static const statusLabels = ['Na čekanju', 'Odobrena', 'Odbijena'];
+  String get statusLabel => statusLabels[status];
+}
+
+class CheckInModel {
+  final int id;
+  final String gymName;
+  final String checkInTime;
+  final String? checkOutTime;
+  final int? durationMinutes;
+
+  CheckInModel({
+    required this.id,
+    required this.gymName,
+    required this.checkInTime,
+    required this.checkOutTime,
+    required this.durationMinutes,
+  });
+
+  factory CheckInModel.fromJson(Map<String, dynamic> j) {
+    return CheckInModel(
+      id: j['id'],
+      gymName: j['gymName'],
+      checkInTime: j['checkInTime'],
+      checkOutTime: j['checkOutTime'],
+      durationMinutes: j['durationMinutes'],
+    );
+  }
+
+  bool get isActive => checkOutTime == null;
+}
+
+class ProgressMeasurementModel {
+  final int id;
+  final int userId;
+  final String date;
+  final double? weightKg;
+  final double? bodyFatPercent;
+  final double? chestCm;
+  final double? waistCm;
+  final double? hipsCm;
+  final double? armCm;
+  final double? legCm;
+  final String? notes;
+
+  const ProgressMeasurementModel({
+    required this.id,
+    required this.userId,
+    required this.date,
+    required this.weightKg,
+    required this.bodyFatPercent,
+    required this.chestCm,
+    required this.waistCm,
+    required this.hipsCm,
+    required this.armCm,
+    required this.legCm,
+    required this.notes,
+  });
+
+  factory ProgressMeasurementModel.fromJson(Map<String, dynamic> j) {
+    double? parseDouble(dynamic value) {
+      if (value is num) return value.toDouble();
+      return double.tryParse('$value');
+    }
+
+    return ProgressMeasurementModel(
+      id: j['id'] ?? 0,
+      userId: j['userId'] ?? 0,
+      date: (j['date'] ?? '').toString(),
+      weightKg: parseDouble(j['weightKg']),
+      bodyFatPercent: parseDouble(j['bodyFatPercent']),
+      chestCm: parseDouble(j['chestCm']),
+      waistCm: parseDouble(j['waistCm']),
+      hipsCm: parseDouble(j['hipsCm']),
+      armCm: parseDouble(j['armCm']),
+      legCm: parseDouble(j['legCm']),
+      notes: j['notes']?.toString(),
+    );
+  }
+}
+
+class UserBadgeModel {
+  final int badgeId;
+  final String name;
+  final String? description;
+  final String? iconUrl;
+  final String earnedAt;
+
+  const UserBadgeModel({
+    required this.badgeId,
+    required this.name,
+    required this.description,
+    required this.iconUrl,
+    required this.earnedAt,
+  });
+
+  factory UserBadgeModel.fromJson(Map<String, dynamic> j) {
+    return UserBadgeModel(
+      badgeId: j['badgeId'] ?? 0,
+      name: (j['name'] ?? '').toString(),
+      description: j['description']?.toString(),
+      iconUrl: j['iconUrl']?.toString(),
+      earnedAt: (j['earnedAt'] ?? '').toString(),
+    );
+  }
+}
+
+class RecommendedGymModel {
+  final int gymId;
+  final String gymName;
+  final double score;
+  final String reason;
+  final List<String> matchedTrainingTypes;
+
+  const RecommendedGymModel({
+    required this.gymId,
+    required this.gymName,
+    required this.score,
+    required this.reason,
+    required this.matchedTrainingTypes,
+  });
+
+  factory RecommendedGymModel.fromJson(Map<String, dynamic> j) {
+    double parseDouble(dynamic value) {
+      if (value is num) return value.toDouble();
+      return double.tryParse('$value') ?? 0;
+    }
+
+    final rawTypes = j['matchedTrainingTypes'];
+    return RecommendedGymModel(
+      gymId: j['gymId'] ?? 0,
+      gymName: (j['gymName'] ?? '').toString(),
+      score: parseDouble(j['score']),
+      reason: (j['reason'] ?? '').toString(),
+      matchedTrainingTypes: rawTypes is List
+          ? rawTypes.map((e) => '$e').toList()
+          : const <String>[],
+    );
+  }
+}
+
+class TrainerProfileModel {
+  final int trainerId;
+  final String fullName;
+  final String? biography;
+  final String? experience;
+  final String? certifications;
+  final String? availability;
+  final String? phoneNumber;
+  final String? email;
+  final String? cityName;
+  final double rating;
+  final int sessionCount;
+  final int groupSessionCount;
+  final int gymCount;
+  final int cityCount;
+  final String? nextAvailableAt;
+  final List<String> trainingTypes;
+  final List<String> gymNames;
+  final List<String> cityNames;
+
+  const TrainerProfileModel({
+    required this.trainerId,
+    required this.fullName,
+    required this.biography,
+    required this.experience,
+    required this.certifications,
+    required this.availability,
+    required this.phoneNumber,
+    required this.email,
+    required this.cityName,
+    required this.rating,
+    required this.sessionCount,
+    required this.groupSessionCount,
+    required this.gymCount,
+    required this.cityCount,
+    required this.nextAvailableAt,
+    required this.trainingTypes,
+    required this.gymNames,
+    required this.cityNames,
+  });
+
+  factory TrainerProfileModel.fromJson(Map<String, dynamic> j) {
+    double parseDouble(dynamic value) {
+      if (value is num) return value.toDouble();
+      return double.tryParse('$value') ?? 0;
+    }
+
+    List<String> parseStringList(dynamic raw) {
+      if (raw is List) return raw.map((e) => '$e').toList();
+      return const <String>[];
+    }
+
+    return TrainerProfileModel(
+      trainerId: j['trainerId'] ?? 0,
+      fullName: (j['fullName'] ?? '').toString(),
+      biography: j['biography']?.toString(),
+      experience: j['experience']?.toString(),
+      certifications: j['certifications']?.toString(),
+      availability: j['availability']?.toString(),
+      phoneNumber: j['phoneNumber']?.toString(),
+      email: j['email']?.toString(),
+      cityName: j['cityName']?.toString(),
+      rating: parseDouble(j['rating']),
+      sessionCount: j['sessionCount'] ?? 0,
+      groupSessionCount: j['groupSessionCount'] ?? 0,
+      gymCount: j['gymCount'] ?? 0,
+      cityCount: j['cityCount'] ?? 0,
+      nextAvailableAt: j['nextAvailableAt']?.toString(),
+      trainingTypes: parseStringList(j['trainingTypes']),
+      gymNames: parseStringList(j['gymNames']),
+      cityNames: parseStringList(j['cityNames']),
+    );
+  }
+}
