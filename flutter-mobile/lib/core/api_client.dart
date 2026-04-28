@@ -8,6 +8,7 @@ import 'constants.dart';
 class ApiClient {
   static String? _token;
   static const Duration _requestTimeout = Duration(seconds: 12);
+  static final http.Client _httpClient = http.Client();
 
   static String? get currentToken => _token;
 
@@ -34,7 +35,7 @@ class ApiClient {
 
   static Future<dynamic> get(String path) async {
     try {
-      final resp = await http
+      final resp = await _httpClient
           .get(
             Uri.parse('$kApiBase$path'),
             headers: _headers,
@@ -50,7 +51,7 @@ class ApiClient {
 
   static Future<dynamic> getRaw(String url) async {
     try {
-      final resp = await http
+      final resp = await _httpClient
           .get(
             Uri.parse(url),
             headers: _headers,
@@ -66,7 +67,7 @@ class ApiClient {
 
   static Future<dynamic> post(String path, Map<String, dynamic> body) async {
     try {
-      final resp = await http
+      final resp = await _httpClient
           .post(
             Uri.parse('$kApiBase$path'),
             headers: _headers,
@@ -83,7 +84,7 @@ class ApiClient {
 
   static Future<dynamic> put(String path, Map<String, dynamic> body) async {
     try {
-      final resp = await http
+      final resp = await _httpClient
           .put(
             Uri.parse('$kApiBase$path'),
             headers: _headers,
@@ -100,7 +101,7 @@ class ApiClient {
 
   static Future<dynamic> delete(String path) async {
     try {
-      final resp = await http
+      final resp = await _httpClient
           .delete(
             Uri.parse('$kApiBase$path'),
             headers: _headers,

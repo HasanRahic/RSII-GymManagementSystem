@@ -17,6 +17,7 @@ class _StripeCheckoutScreenState extends State<StripeCheckoutScreen> {
   bool _loading = true;
   String? _errorMessage;
   Timer? _loadingWatchdog;
+  bool _checkoutStarted = false;
 
   bool _isTerminalCheckoutUrl(String url) {
     return url.contains('/checkout/success') || url.contains('/checkout/cancel');
@@ -50,7 +51,6 @@ class _StripeCheckoutScreenState extends State<StripeCheckoutScreen> {
   @override
   void initState() {
     super.initState();
-    _startLoadingWatchdog();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.white)
@@ -94,8 +94,14 @@ class _StripeCheckoutScreenState extends State<StripeCheckoutScreen> {
             });
           },
         ),
-      )
-      ..loadRequest(Uri.parse(widget.checkoutUrl));
+      );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _checkoutStarted) return;
+      _checkoutStarted = true;
+      _startLoadingWatchdog();
+      _controller.loadRequest(Uri.parse(widget.checkoutUrl));
+    });
   }
 
   @override

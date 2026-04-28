@@ -334,17 +334,6 @@ public class PaymentsController(
             return NotFound(new { message = "Grupni trening nije pronađen." });
         }
 
-        if (trainingSession.Reservations.Any(r => r.UserId == userId && r.Status == ReservationStatus.Confirmed))
-        {
-            return BadRequest(new { message = "Već ste prijavljeni na ovaj grupni trening." });
-        }
-
-        var activeReservations = trainingSession.Reservations.Count(r => r.Status == ReservationStatus.Confirmed);
-        if (activeReservations >= trainingSession.MaxParticipants)
-        {
-            return BadRequest(new { message = "Grupni trening je popunjen." });
-        }
-
         var userEmail = await context.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)

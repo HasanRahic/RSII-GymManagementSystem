@@ -50,16 +50,76 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> _trainingTypes = [];
   final List<_ShopCartItem> _shopCart = [];
   final List<_ShopProduct> _shopProducts = const [
-    _ShopProduct(title: 'Whey Protein', price: 89, emoji: '🥤', category: 'Suplementi', gymIds: [1]),
-    _ShopProduct(title: 'Creatine Monohydrate', price: 49, emoji: '⚗️', category: 'Suplementi', gymIds: [1, 2]),
-    _ShopProduct(title: 'FitZone Majica', price: 35, emoji: '👕', category: 'Odjeća', gymIds: [1]),
-    _ShopProduct(title: 'Power Resistance Band', price: 24, emoji: '🧵', category: 'Oprema', gymIds: [2]),
-    _ShopProduct(title: 'BCAA Recovery', price: 39, emoji: '💧', category: 'Suplementi', gymIds: [2, 3]),
-    _ShopProduct(title: 'Gym Shorts', price: 42, emoji: '🩳', category: 'Odjeća', gymIds: [2, 3]),
-    _ShopProduct(title: 'Muške Rukavice', price: 29, emoji: '🧤', category: 'Oprema', gymIds: [1, 3]),
-    _ShopProduct(title: 'Shaker 700ml', price: 15, emoji: '🧋', category: 'Oprema', gymIds: [1, 2, 3]),
-    _ShopProduct(title: 'Yoga Prostirka', price: 55, emoji: '🧘', category: 'Oprema', gymIds: [3]),
-    _ShopProduct(title: 'IronGym Pojas', price: 47, emoji: '🦾', category: 'Oprema', gymIds: [3]),
+    _ShopProduct(
+      title: 'Whey Protein',
+      price: 89,
+      emoji: '🥤',
+      category: 'Suplementi',
+      gymIds: [1],
+    ),
+    _ShopProduct(
+      title: 'Creatine Monohydrate',
+      price: 49,
+      emoji: '⚗️',
+      category: 'Suplementi',
+      gymIds: [1, 2],
+    ),
+    _ShopProduct(
+      title: 'FitZone Majica',
+      price: 35,
+      emoji: '👕',
+      category: 'Odjeća',
+      gymIds: [1],
+    ),
+    _ShopProduct(
+      title: 'Power Resistance Band',
+      price: 24,
+      emoji: '🧵',
+      category: 'Oprema',
+      gymIds: [2],
+    ),
+    _ShopProduct(
+      title: 'BCAA Recovery',
+      price: 39,
+      emoji: '💧',
+      category: 'Suplementi',
+      gymIds: [2, 3],
+    ),
+    _ShopProduct(
+      title: 'Gym Shorts',
+      price: 42,
+      emoji: '🩳',
+      category: 'Odjeća',
+      gymIds: [2, 3],
+    ),
+    _ShopProduct(
+      title: 'Muške Rukavice',
+      price: 29,
+      emoji: '🧤',
+      category: 'Oprema',
+      gymIds: [1, 3],
+    ),
+    _ShopProduct(
+      title: 'Shaker 700ml',
+      price: 15,
+      emoji: '🧋',
+      category: 'Oprema',
+      gymIds: [1, 2, 3],
+    ),
+    _ShopProduct(
+      title: 'Yoga Prostirka',
+      price: 55,
+      emoji: '🧘',
+      category: 'Oprema',
+      gymIds: [3],
+    ),
+    _ShopProduct(
+      title: 'IronGym Pojas',
+      price: 47,
+      emoji: '🦾',
+      category: 'Oprema',
+      gymIds: [3],
+    ),
   ];
   List<Map<String, dynamic>> _recentPayments = [];
   bool _loadingPayments = true;
@@ -78,14 +138,19 @@ class _HomeScreenState extends State<HomeScreen> {
   List<TrainerProfileModel> _trainerProfiles = [];
   List<RecommendedGymModel> _recommendedGyms = [];
   bool _loadingDiscoveryData = false;
+  String? _lastDiscoveryCacheKey;
   Timer? _discoveryDebounce;
+  final PageStorageBucket _tabScrollBucket = PageStorageBucket();
   final List<_CustomTrainingEntry> _customTrainings = [];
   int? _customTrainingsOwnerUserId;
   String _billingTypeFilter = 'Sve';
   bool _billingSortNewestFirst = true;
   static const List<int> _sessionDurationOptions = [30, 90, 180, 365];
+  Future<void>? _membershipRefreshTask;
+  Future<void>? _catalogLoadTask;
 
-  bool get _hasGymAccess => _activeMembership != null || _hasActiveGroupTrainingAccess;
+  bool get _hasGymAccess =>
+      _activeMembership != null || _hasActiveGroupTrainingAccess;
 
   int? get _membershipGymId {
     final gymName = _activeMembership?.gymName;
@@ -97,7 +162,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   int? get _effectiveShopGymId {
-    if (_selectedShopGymId != null && _gyms.any((g) => g.id == _selectedShopGymId)) {
+    if (_selectedShopGymId != null &&
+        _gyms.any((g) => g.id == _selectedShopGymId)) {
       return _selectedShopGymId;
     }
 
@@ -121,7 +187,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<_CustomTrainingEntry> get _completedCustomTrainings {
     final items = _customTrainings.where((t) => t.completed).toList();
-    items.sort((a, b) => (b.completedAt ?? b.createdAt).compareTo(a.completedAt ?? a.createdAt));
+    items.sort(
+      (a, b) => (b.completedAt ?? b.createdAt).compareTo(
+        a.completedAt ?? a.createdAt,
+      ),
+    );
     return items;
   }
 
@@ -140,10 +210,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Map<String, dynamic> _customExerciseToJson(_CustomExerciseEntry exercise) => {
-        'exerciseName': exercise.exerciseName,
-        'weightKg': exercise.weightKg,
-        'reps': exercise.reps,
-      };
+    'exerciseName': exercise.exerciseName,
+    'weightKg': exercise.weightKg,
+    'reps': exercise.reps,
+  };
 
   _CustomExerciseEntry? _customExerciseFromJson(Map<String, dynamic> map) {
     final name = map['exerciseName']?.toString().trim() ?? '';
@@ -163,15 +233,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Map<String, dynamic> _customTrainingToJson(_CustomTrainingEntry training) => {
-        'id': training.id,
-        'name': training.name,
-        'details': training.details,
-        'createdAt': training.createdAt.toIso8601String(),
-        'completed': training.completed,
-        'completedAt': training.completedAt?.toIso8601String(),
-        'exercises':
-            training.exercises.map((exercise) => _customExerciseToJson(exercise)).toList(),
-      };
+    'id': training.id,
+    'name': training.name,
+    'details': training.details,
+    'createdAt': training.createdAt.toIso8601String(),
+    'completed': training.completed,
+    'completedAt': training.completedAt?.toIso8601String(),
+    'exercises': training.exercises
+        .map((exercise) => _customExerciseToJson(exercise))
+        .toList(),
+  };
 
   _CustomTrainingEntry? _customTrainingFromJson(Map<String, dynamic> map) {
     final idRaw = map['id'];
@@ -179,8 +250,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final name = map['name']?.toString().trim() ?? '';
     final details = map['details']?.toString().trim() ?? '';
     final createdAtRaw = map['createdAt']?.toString();
-    final createdAt =
-        createdAtRaw == null ? null : DateTime.tryParse(createdAtRaw);
+    final createdAt = createdAtRaw == null
+        ? null
+        : DateTime.tryParse(createdAtRaw);
 
     final exercisesRaw = map['exercises'];
     if (id == null || name.isEmpty || details.isEmpty || createdAt == null) {
@@ -287,7 +359,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final prefs = await SharedPreferences.getInstance();
     final encoded = jsonEncode(
-      _customTrainings.map((training) => _customTrainingToJson(training)).toList(),
+      _customTrainings
+          .map((training) => _customTrainingToJson(training))
+          .toList(),
     );
     await prefs.setString(_customTrainingsStorageKey(user.id), encoded);
 
@@ -310,7 +384,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!forceReload && _reservationStateOwnerUserId == user.id) return;
 
     try {
-      final reservationIds = await TrainingSessionService.getMyReservationSessionIds();
+      final reservationIds =
+          await TrainingSessionService.getMyReservationSessionIds();
       if (!mounted) return;
       setState(() {
         _reservedSessionIds
@@ -330,8 +405,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadMembership();
-    _loadCatalog();
+    unawaited(_loadMembership());
+    unawaited(_loadCatalog());
     _syncCheckInState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -344,12 +419,12 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_selectedIndex == 3) {
         _ensureProfileDataLoaded();
       }
-      _refreshPendingPaymentsCount();
-      _resumePendingPayments();
+      unawaited(_refreshPendingPaymentsCount());
+      unawaited(_resumePendingPayments());
       _pendingPaymentsTimer = Timer.periodic(const Duration(seconds: 45), (_) {
-        _loadMembership();
-        _refreshPendingPaymentsCount();
-        _resumePendingPayments();
+        if (_pendingPaymentsCount <= 0) return;
+        unawaited(_refreshPendingPaymentsCount());
+        unawaited(_resumePendingPayments());
       });
     });
   }
@@ -387,7 +462,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _refreshPendingPaymentsCount() async {
     final pendingIds = await PaymentService.getPendingPaymentIds();
     if (!mounted) return;
-    setState(() => _pendingPaymentsCount = pendingIds.length);
+    final nextCount = pendingIds.length;
+    if (_pendingPaymentsCount == nextCount) return;
+    setState(() => _pendingPaymentsCount = nextCount);
   }
 
   @override
@@ -399,8 +476,20 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  Future<void> _loadMembership() async {
-    setState(() => _loadingMembership = true);
+  Future<void> _loadMembership({bool silent = false}) {
+    final activeTask = _membershipRefreshTask;
+    if (activeTask != null) return activeTask;
+
+    final task = _performMembershipLoad(silent: silent);
+    _membershipRefreshTask = task;
+    return task.whenComplete(() => _membershipRefreshTask = null);
+  }
+
+  Future<void> _performMembershipLoad({bool silent = false}) async {
+    if (!silent && mounted && !_loadingMembership) {
+      setState(() => _loadingMembership = true);
+    }
+
     try {
       final results = await Future.wait<dynamic>([
         MembershipService.getMyActiveMembership(),
@@ -410,52 +499,87 @@ class _HomeScreenState extends State<HomeScreen> {
       final membership = results[0] as UserMembership?;
       final memberships = results[1] as List<UserMembership>;
       final accessStatus = results[2] as Map<String, dynamic>;
-      final activeFromList = memberships
-          .where((m) => m.status == 0)
-          .toList()
+      final activeFromList = memberships.where((m) => m.status == 0).toList()
         ..sort((a, b) => b.id.compareTo(a.id));
-      final resolvedMembership = membership ?? (activeFromList.isNotEmpty ? activeFromList.first : null);
+      final resolvedMembership =
+          membership ??
+          (activeFromList.isNotEmpty ? activeFromList.first : null);
       final hasGroupTrainingAccess =
           accessStatus['hasActiveGroupTrainingAccess'] == true;
 
       if (!mounted) return;
       final fallbackCount = ((resolvedMembership?.daysRemaining ?? 0) ~/ 2) + 6;
-      setState(() {
-        _activeMembership = resolvedMembership;
-        _hasActiveGroupTrainingAccess = hasGroupTrainingAccess;
-        if (!_hasGymAccess && (_selectedIndex == 0 || _selectedIndex == 2)) {
-          _selectedIndex = 1;
-        }
-        if (_hasGymAccess && _selectedIndex == 1) {
-          _selectedIndex = 0;
-        }
-        if (!_isCheckedIn) {
-          _membersInGym = fallbackCount;
-        }
-      });
+      final nextHasGymAccess =
+          resolvedMembership != null || hasGroupTrainingAccess;
+      final nextSelectedIndex =
+          !nextHasGymAccess && (_selectedIndex == 0 || _selectedIndex == 2)
+          ? 1
+          : nextHasGymAccess && _selectedIndex == 1
+          ? 0
+          : _selectedIndex;
+      final membershipChanged =
+          _activeMembership?.id != resolvedMembership?.id ||
+          _activeMembership?.status != resolvedMembership?.status ||
+          _activeMembership?.daysRemaining !=
+              resolvedMembership?.daysRemaining ||
+          _hasActiveGroupTrainingAccess != hasGroupTrainingAccess ||
+          _selectedIndex != nextSelectedIndex ||
+          (!_isCheckedIn && _membersInGym != fallbackCount);
+
+      if (membershipChanged) {
+        setState(() {
+          _activeMembership = resolvedMembership;
+          _hasActiveGroupTrainingAccess = hasGroupTrainingAccess;
+          _selectedIndex = nextSelectedIndex;
+          if (!_isCheckedIn) {
+            _membersInGym = fallbackCount;
+          }
+        });
+      }
 
       if (hasGroupTrainingAccess) {
         await _loadPaidGroupSchedule();
       } else {
         if (!mounted) return;
-        setState(() => _paidGroupSchedule = []);
+        if (_paidGroupSchedule.isNotEmpty) {
+          setState(() => _paidGroupSchedule = []);
+        }
         await NotificationService.syncSessionReminders(const []);
       }
     } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _activeMembership = null;
-        _hasActiveGroupTrainingAccess = false;
-        _paidGroupSchedule = [];
-      });
+      final hadMembershipState =
+          _activeMembership != null ||
+          _hasActiveGroupTrainingAccess ||
+          _paidGroupSchedule.isNotEmpty;
+      if (hadMembershipState) {
+        setState(() {
+          _activeMembership = null;
+          _hasActiveGroupTrainingAccess = false;
+          _paidGroupSchedule = [];
+        });
+      }
       await NotificationService.syncSessionReminders(const []);
     } finally {
-      if (mounted) setState(() => _loadingMembership = false);
+      if (!silent && mounted && _loadingMembership) {
+        setState(() => _loadingMembership = false);
+      }
     }
   }
 
-  Future<void> _loadCatalog() async {
-    setState(() => _loadingCatalog = true);
+  Future<void> _loadCatalog() {
+    final activeTask = _catalogLoadTask;
+    if (activeTask != null) return activeTask;
+
+    final task = _performCatalogLoad();
+    _catalogLoadTask = task;
+    return task.whenComplete(() => _catalogLoadTask = null);
+  }
+
+  Future<void> _performCatalogLoad() async {
+    if (mounted && !_loadingCatalog) {
+      setState(() => _loadingCatalog = true);
+    }
     try {
       final results = await Future.wait([
         GymService.getAll(),
@@ -466,23 +590,47 @@ class _HomeScreenState extends State<HomeScreen> {
       final plans = results[1] as List<MembershipPlanModel>;
 
       if (!mounted) return;
-      setState(() {
+      final nextMembershipGymId = (() {
+        final gymName = _activeMembership?.gymName;
+        if (gymName == null || gymName.isEmpty) return null;
+        for (final gym in gyms) {
+          if (gym.name == gymName) return gym.id;
+        }
+        return null;
+      })();
+      final nextShopGymId = _selectedShopGymId == null
+          ? nextMembershipGymId ?? (gyms.isNotEmpty ? gyms.first.id : null)
+          : gyms.any((g) => g.id == _selectedShopGymId)
+          ? _selectedShopGymId
+          : (gyms.isNotEmpty ? gyms.first.id : null);
+
+      final catalogChanged =
+          _gyms.length != gyms.length ||
+          _plans.length != plans.length ||
+          _selectedShopGymId != nextShopGymId;
+
+      if (catalogChanged) {
+        setState(() {
+          _gyms = gyms;
+          _plans = plans;
+          _selectedShopGymId = nextShopGymId;
+        });
+      } else {
         _gyms = gyms;
         _plans = plans;
-        if (_selectedShopGymId == null) {
-          _selectedShopGymId = _membershipGymId ?? (gyms.isNotEmpty ? gyms.first.id : null);
-        } else if (!_gyms.any((g) => g.id == _selectedShopGymId)) {
-          _selectedShopGymId = gyms.isNotEmpty ? gyms.first.id : null;
-        }
-      });
+      }
     } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _gyms = [];
-        _plans = [];
-      });
+      if (_gyms.isNotEmpty || _plans.isNotEmpty) {
+        setState(() {
+          _gyms = [];
+          _plans = [];
+        });
+      }
     } finally {
-      if (mounted) setState(() => _loadingCatalog = false);
+      if (mounted && _loadingCatalog) {
+        setState(() => _loadingCatalog = false);
+      }
     }
   }
 
@@ -545,7 +693,10 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _loadDiscoveryData() async {
+  Future<void> _loadDiscoveryData({bool forceReload = false}) async {
+    final requestKey =
+        '${_selectedCity.trim()}|${_selectedTrainingTypeId ?? ''}|${_gymSearchCtrl.text.trim().toLowerCase()}';
+    if (!forceReload && _lastDiscoveryCacheKey == requestKey) return;
     if (_loadingDiscoveryData) return;
 
     setState(() => _loadingDiscoveryData = true);
@@ -566,12 +717,14 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _recommendedGyms = results[0] as List<RecommendedGymModel>;
         _trainerProfiles = results[1] as List<TrainerProfileModel>;
+        _lastDiscoveryCacheKey = requestKey;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _recommendedGyms = [];
         _trainerProfiles = [];
+        _lastDiscoveryCacheKey = requestKey;
       });
     } finally {
       if (mounted) setState(() => _loadingDiscoveryData = false);
@@ -579,16 +732,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _refreshAll() async {
-    await Future.wait([
-      _loadMembership(),
-      _loadCatalog(),
-      _syncCheckInState(),
-    ]);
+    await Future.wait([_loadMembership(), _loadCatalog(), _syncCheckInState()]);
 
     if (_selectedIndex == 0 || _selectedIndex == 1 || _selectedIndex == 2) {
       await _ensureTrainingDataLoaded(forceReload: true);
       await _loadPaidGroupSchedule();
-      await _loadDiscoveryData();
+      await _loadDiscoveryData(forceReload: true);
     }
 
     if (_selectedIndex == 2 || _selectedIndex == 3) {
@@ -694,7 +843,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final pendingIds = await PaymentService.getPendingPaymentIds();
     if (!mounted) return;
     if (pendingIds.isEmpty) {
-      setState(() => _pendingPaymentsCount = 0);
+      if (_pendingPaymentsCount != 0) {
+        setState(() => _pendingPaymentsCount = 0);
+      }
       return;
     }
 
@@ -721,8 +872,11 @@ class _HomeScreenState extends State<HomeScreen> {
     await _refreshPendingPaymentsCount();
     if (!mounted) return;
     if (confirmed > 0 || failed > 0) {
-      final message = 'Ažurirano stanje uplata: uspješno $confirmed, neuspješno $failed.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      final message =
+          'Ažurirano stanje uplata: uspješno $confirmed, neuspješno $failed.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
       await _loadPayments();
     }
   }
@@ -738,7 +892,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<TrainingSessionModel> get _reservedSessions {
-    final items = _sessions.where((s) => _reservedSessionIds.contains(s.id)).toList();
+    final items = _sessions
+        .where((s) => _reservedSessionIds.contains(s.id))
+        .toList();
     items.sort((a, b) => _sessionStartAt(a).compareTo(_sessionStartAt(b)));
     return items;
   }
@@ -755,47 +911,60 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _reservedSessionIds.remove(session.id);
           _sessions = _sessions
-              .map((s) => s.id == session.id
-                  ? TrainingSessionModel(
-                      id: s.id,
-                      title: s.title,
-                      description: s.description,
-                      type: s.type,
-                      date: s.date,
-                      startTime: s.startTime,
-                      endTime: s.endTime,
-                      maxParticipants: s.maxParticipants,
-                      currentParticipants: (s.currentParticipants - 1).clamp(0, s.maxParticipants),
-                      price: s.price,
-                      isActive: s.isActive,
-                      trainerId: s.trainerId,
-                      trainerFullName: s.trainerFullName,
-                      gymId: s.gymId,
-                      gymName: s.gymName,
-                      trainingTypeId: s.trainingTypeId,
-                      trainingTypeName: s.trainingTypeName,
-                    )
-                  : s)
+              .map(
+                (s) => s.id == session.id
+                    ? TrainingSessionModel(
+                        id: s.id,
+                        title: s.title,
+                        description: s.description,
+                        type: s.type,
+                        date: s.date,
+                        startTime: s.startTime,
+                        endTime: s.endTime,
+                        maxParticipants: s.maxParticipants,
+                        currentParticipants: (s.currentParticipants - 1).clamp(
+                          0,
+                          s.maxParticipants,
+                        ),
+                        price: s.price,
+                        isActive: s.isActive,
+                        trainerId: s.trainerId,
+                        trainerFullName: s.trainerFullName,
+                        gymId: s.gymId,
+                        gymName: s.gymName,
+                        trainingTypeId: s.trainingTypeId,
+                        trainingTypeName: s.trainingTypeName,
+                      )
+                    : s,
+              )
               .toList();
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Rezervacija za "${session.title}" je otkazana.')),
+          SnackBar(
+            content: Text('Rezervacija za "${session.title}" je otkazana.'),
+          ),
         );
       } else {
         final reserved = await TrainingSessionService.reserve(session.id);
         if (!mounted) return;
         setState(() {
           _reservedSessionIds.add(session.id);
-          _sessions = _sessions.map((s) => s.id == session.id ? reserved : s).toList();
+          _sessions = _sessions
+              .map((s) => s.id == session.id ? reserved : s)
+              .toList();
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Uspješno ste rezervisali "${session.title}".')),
+          SnackBar(
+            content: Text('Uspješno ste rezervisali "${session.title}".'),
+          ),
         );
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Rezervacija nije uspjela: ${_friendlyError(e)}')),
+        SnackBar(
+          content: Text('Rezervacija nije uspjela: ${_friendlyError(e)}'),
+        ),
       );
     } finally {
       if (mounted) {
@@ -853,7 +1022,11 @@ class _HomeScreenState extends State<HomeScreen> {
     return double.tryParse(normalized);
   }
 
-  Widget _skeletonBox({double height = 16, double width = double.infinity, double radius = 12}) {
+  Widget _skeletonBox({
+    double height = 16,
+    double width = double.infinity,
+    double radius = 12,
+  }) {
     return Container(
       height: height,
       width: width,
@@ -956,10 +1129,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           if (actionLabel != null && onAction != null) ...[
             const SizedBox(height: 14),
-            FilledButton(
-              onPressed: onAction,
-              child: Text(actionLabel),
-            ),
+            FilledButton(onPressed: onAction, child: Text(actionLabel)),
           ],
         ],
       ),
@@ -988,7 +1158,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (originalPaymentId <= 0) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ID uplate nije validan za ponovni pokušaj.')),
+        const SnackBar(
+          content: Text('ID uplate nije validan za ponovni pokušaj.'),
+        ),
       );
       return;
     }
@@ -1000,16 +1172,18 @@ class _HomeScreenState extends State<HomeScreen> {
       final paymentId = result['paymentId'];
       final sessionUrl = result['sessionUrl'];
       final amount = result['amount'];
-      final parsedPaymentId = paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0;
+      final parsedPaymentId = paymentId is int
+          ? paymentId
+          : int.tryParse('$paymentId') ?? 0;
 
       if (sessionUrl == null || sessionUrl.toString().isEmpty) {
         throw 'Stripe checkout nije dostupan.';
       }
 
-      await PaymentService.markPendingPayment(parsedPaymentId);
-      await _refreshPendingPaymentsCount();
-
-      final launched = await _launchStripeCheckout(sessionUrl.toString());
+      final launched = await _launchStripeCheckoutForPayment(
+        paymentId: parsedPaymentId,
+        sessionUrl: sessionUrl.toString(),
+      );
       if (!launched) {
         throw 'Ne mogu otvoriti checkout URL.';
       }
@@ -1027,7 +1201,11 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       if (!mounted) return;
       scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text('Ponovni pokušaj uplate nije uspio: ${_friendlyError(e)}')),
+        SnackBar(
+          content: Text(
+            'Ponovni pokušaj uplate nije uspio: ${_friendlyError(e)}',
+          ),
+        ),
       );
     }
   }
@@ -1061,7 +1239,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final status = _paymentStatusLabel(payment['status']);
     final createdAt = _formatIsoDate(payment['createdAt']);
     final completedAt = _formatIsoDate(payment['completedAt']);
-    final sessionAccessDays = int.tryParse('${payment['sessionAccessDays'] ?? ''}');
+    final sessionAccessDays = int.tryParse(
+      '${payment['sessionAccessDays'] ?? ''}',
+    );
     final sessionAccessUntil = _formatIsoDate(payment['sessionAccessUntil']);
 
     showDialog<void>(
@@ -1125,9 +1305,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       onTap: () => _showPaymentDetails(payment),
                       borderRadius: BorderRadius.circular(16),
                       child: _HistoryCard(
-                        title: '${_paymentReference(payment)} ${_paymentTypeLabel(payment['type'])}',
-                        value: '${((payment['amount'] as num?) ?? 0).toStringAsFixed(0)} ${payment['currency'] ?? 'KM'}',
-                        date: '${_formatIsoDate(payment['createdAt'])} · ${_paymentStatusLabel(payment['status'])}',
+                        title:
+                            '${_paymentReference(payment)} ${_paymentTypeLabel(payment['type'])}',
+                        value:
+                            '${((payment['amount'] as num?) ?? 0).toStringAsFixed(0)} ${payment['currency'] ?? 'KM'}',
+                        date:
+                            '${_formatIsoDate(payment['createdAt'])} · ${_paymentStatusLabel(payment['status'])}',
                       ),
                     );
                   },
@@ -1151,9 +1334,12 @@ class _HomeScreenState extends State<HomeScreen> {
           onTap: () => _showPaymentDetails(payment),
           borderRadius: BorderRadius.circular(16),
           child: _HistoryCard(
-            title: '${_paymentReference(payment)} ${_paymentTypeLabel(payment['type'])}',
-            value: '${((payment['amount'] as num?) ?? 0).toStringAsFixed(0)} ${payment['currency'] ?? 'KM'}',
-            date: '${_formatIsoDate(payment['createdAt'])} · ${_paymentStatusLabel(payment['status'])}',
+            title:
+                '${_paymentReference(payment)} ${_paymentTypeLabel(payment['type'])}',
+            value:
+                '${((payment['amount'] as num?) ?? 0).toStringAsFixed(0)} ${payment['currency'] ?? 'KM'}',
+            date:
+                '${_formatIsoDate(payment['createdAt'])} · ${_paymentStatusLabel(payment['status'])}',
           ),
         ),
         if (_isFailedPayment(payment))
@@ -1175,10 +1361,18 @@ class _HomeScreenState extends State<HomeScreen> {
       final active = history.where((h) => h.isActive).toList();
       if (!mounted) return;
       if (active.isNotEmpty) {
+        final activeCheckIn = active.first;
         setState(() {
           _isCheckedIn = true;
-          _activeCheckInId = active.first.id;
-          _membersInGym += 1;
+          _activeCheckInId = activeCheckIn.id;
+          if (_membersInGym <= 0) {
+            _membersInGym = 1;
+          }
+        });
+      } else if (_isCheckedIn || _activeCheckInId != null) {
+        setState(() {
+          _isCheckedIn = false;
+          _activeCheckInId = null;
         });
       }
     } catch (_) {
@@ -1187,6 +1381,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<int> _resolveGymId() async {
+    final membershipGymId = _membershipGymId;
+    if (membershipGymId != null) {
+      return membershipGymId;
+    }
+
+    if (_gyms.isNotEmpty) {
+      return _gyms.first.id;
+    }
+
     final gymName = _activeMembership?.gymName;
     if (gymName == null || gymName.trim().isEmpty) {
       return 1;
@@ -1194,7 +1397,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final gyms = await GymService.getAll();
-      final matched = gyms.where((g) => g.name.toLowerCase() == gymName.toLowerCase()).toList();
+      final matched = gyms
+          .where((g) => g.name.toLowerCase() == gymName.toLowerCase())
+          .toList();
       if (matched.isNotEmpty) {
         return matched.first.id;
       }
@@ -1219,7 +1424,9 @@ class _HomeScreenState extends State<HomeScreen> {
           _membersInGym = (_membersInGym - 1).clamp(0, 10000);
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Uspješno ste se odjavili iz teretane.')),
+          const SnackBar(
+            content: Text('Uspješno ste se odjavili iz teretane.'),
+          ),
         );
       } else {
         final gymId = await _resolveGymId();
@@ -1236,9 +1443,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Greška: ${_friendlyError(e)}')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Greška: ${_friendlyError(e)}')));
     } finally {
       if (mounted) {
         setState(() => _checkInBusy = false);
@@ -1288,21 +1495,27 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<String> get _shopCategories {
-    final categories = _filteredProductsByGym.map((p) => p.category).toSet().toList()..sort();
+    final categories =
+        _filteredProductsByGym.map((p) => p.category).toSet().toList()..sort();
     return ['Sve', ...categories];
   }
 
   List<_ShopProduct> get _filteredProductsByGym {
     final gymId = _effectiveShopGymId;
     if (gymId == null) return _shopProducts;
-    return _shopProducts.where((product) => product.gymIds.contains(gymId)).toList();
+    return _shopProducts
+        .where((product) => product.gymIds.contains(gymId))
+        .toList();
   }
 
   List<_ShopProduct> get _filteredShopProducts {
     final query = _shopSearchCtrl.text.trim().toLowerCase();
     return _filteredProductsByGym.where((product) {
-      final categoryMatches = _selectedShopCategory == 'Sve' || product.category == _selectedShopCategory;
-      final queryMatches = query.isEmpty ||
+      final categoryMatches =
+          _selectedShopCategory == 'Sve' ||
+          product.category == _selectedShopCategory;
+      final queryMatches =
+          query.isEmpty ||
           product.title.toLowerCase().contains(query) ||
           product.category.toLowerCase().contains(query);
       return categoryMatches && queryMatches;
@@ -1313,11 +1526,42 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return false;
     final launched = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(
-        builder: (_) => StripeCheckoutScreen(checkoutUrl: sessionUrl),
+      PageRouteBuilder<bool>(
+        transitionDuration: const Duration(milliseconds: 160),
+        reverseTransitionDuration: const Duration(milliseconds: 140),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            StripeCheckoutScreen(checkoutUrl: sessionUrl),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+          return FadeTransition(opacity: curved, child: child);
+        },
       ),
     );
     return launched ?? false;
+  }
+
+  Future<bool> _launchStripeCheckoutForPayment({
+    required int paymentId,
+    required String sessionUrl,
+  }) async {
+    if (paymentId > 0) {
+      unawaited(() async {
+        await PaymentService.markPendingPayment(paymentId);
+        await _refreshPendingPaymentsCount();
+      }());
+    }
+
+    final launched = await _launchStripeCheckout(sessionUrl);
+
+    if (!launched && paymentId > 0) {
+      await PaymentService.clearPendingPayment(paymentId);
+      await _refreshPendingPaymentsCount();
+    }
+
+    return launched;
   }
 
   Future<void> _addShopItemToCart(String title, double price) async {
@@ -1345,10 +1589,7 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(
           content: Text('$title je dodan u korpu.'),
           duration: const Duration(milliseconds: 1200),
-          action: SnackBarAction(
-            label: 'Korpa',
-            onPressed: _openShopCheckout,
-          ),
+          action: SnackBarAction(label: 'Korpa', onPressed: _openShopCheckout),
         ),
       );
   }
@@ -1388,9 +1629,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _openShopCheckout() async {
     if (_shopCart.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Korpa je prazna.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Korpa je prazna.')));
       return;
     }
 
@@ -1432,7 +1673,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                         _changeCartItemQuantity(item, -1);
                                         setLocal(() {});
                                       },
-                                      icon: const Icon(Icons.remove_circle_outline),
+                                      icon: const Icon(
+                                        Icons.remove_circle_outline,
+                                      ),
                                       visualDensity: VisualDensity.compact,
                                     ),
                                     IconButton(
@@ -1441,7 +1684,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                         _changeCartItemQuantity(item, 1);
                                         setLocal(() {});
                                       },
-                                      icon: const Icon(Icons.add_circle_outline),
+                                      icon: const Icon(
+                                        Icons.add_circle_outline,
+                                      ),
                                       visualDensity: VisualDensity.compact,
                                     ),
                                     IconButton(
@@ -1489,7 +1734,9 @@ class _HomeScreenState extends State<HomeScreen> {
               child: const Text('Zatvori'),
             ),
             FilledButton(
-              onPressed: _shopCart.isEmpty ? null : () => Navigator.pop(ctx, true),
+              onPressed: _shopCart.isEmpty
+                  ? null
+                  : () => Navigator.pop(ctx, true),
               child: const Text('Potvrdi narudžbu'),
             ),
           ],
@@ -1500,9 +1747,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     if (confirmed != true) return;
     if (_shopCart.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Korpa je prazna.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Korpa je prazna.')));
       return;
     }
 
@@ -1523,10 +1770,10 @@ class _HomeScreenState extends State<HomeScreen> {
       final amount = result['amount'];
 
       if (!mounted) return;
-      
+
       // Save scaffold messenger reference before async operations
       final scaffoldMessenger = ScaffoldMessenger.of(context);
-      
+
       // Clear the cart immediately
       setState(() {
         _shopCart.clear();
@@ -1535,13 +1782,14 @@ class _HomeScreenState extends State<HomeScreen> {
       // Open Stripe checkout URL
       if (sessionUrl != null && sessionUrl.isNotEmpty) {
         try {
-          final parsedPaymentId = paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0;
-          await PaymentService.markPendingPayment(parsedPaymentId);
-          await _refreshPendingPaymentsCount();
-
-          final launched = await _launchStripeCheckout(sessionUrl);
+          final parsedPaymentId = paymentId is int
+              ? paymentId
+              : int.tryParse('$paymentId') ?? 0;
+          final launched = await _launchStripeCheckoutForPayment(
+            paymentId: parsedPaymentId,
+            sessionUrl: sessionUrl,
+          );
           if (launched) {
-            
             if (!mounted) return;
             scaffoldMessenger.showSnackBar(
               SnackBar(
@@ -1552,17 +1800,18 @@ class _HomeScreenState extends State<HomeScreen> {
             );
 
             // Webhook can take a few seconds; poll status so the user gets feedback in-app.
-            await _trackPaymentStatus(
-              parsedPaymentId,
-              scaffoldMessenger,
-            );
+            await _trackPaymentStatus(parsedPaymentId, scaffoldMessenger);
           } else {
             throw 'Ne mogu otvoriti checkout URL.';
           }
         } catch (e) {
           if (!mounted) return;
           scaffoldMessenger.showSnackBar(
-            SnackBar(content: Text('Greška pri otvaranju checkouta: ${_friendlyError(e)}')),
+            SnackBar(
+              content: Text(
+                'Greška pri otvaranju checkouta: ${_friendlyError(e)}',
+              ),
+            ),
           );
         }
       } else {
@@ -1667,11 +1916,14 @@ class _HomeScreenState extends State<HomeScreen> {
       final amount = result['amount'];
 
       if (sessionUrl != null && sessionUrl.toString().isNotEmpty) {
-        final parsedPaymentId = paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0;
+        final parsedPaymentId = paymentId is int
+            ? paymentId
+            : int.tryParse('$paymentId') ?? 0;
 
-        await PaymentService.markPendingPayment(parsedPaymentId);
-        await _refreshPendingPaymentsCount();
-        final launched = await _launchStripeCheckout(sessionUrl.toString());
+        final launched = await _launchStripeCheckoutForPayment(
+          paymentId: parsedPaymentId,
+          sessionUrl: sessionUrl.toString(),
+        );
         if (!launched) {
           throw 'Ne mogu otvoriti checkout URL.';
         }
@@ -1685,13 +1937,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
 
-        await _trackPaymentStatus(
-          parsedPaymentId,
-          scaffoldMessenger,
-        );
+        await _trackPaymentStatus(parsedPaymentId, scaffoldMessenger);
       } else {
         scaffoldMessenger.showSnackBar(
-          SnackBar(content: Text('Stripe checkout nije dostupan za članarinu "${plan.name}".')),
+          SnackBar(
+            content: Text(
+              'Stripe checkout nije dostupan za članarinu "${plan.name}".',
+            ),
+          ),
         );
       }
 
@@ -1699,24 +1952,36 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadPayments();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Proces kupovine članarine "${plan.name}" je pokrenut.')),
+        SnackBar(
+          content: Text(
+            'Proces kupovine članarine "${plan.name}" je pokrenut.',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Greška pri plaćanju članarine: ${_friendlyError(e)}')),
+        SnackBar(
+          content: Text('Greška pri plaćanju članarine: ${_friendlyError(e)}'),
+        ),
       );
     }
   }
 
-  Future<void> _purchaseGroupTraining(TrainingSessionModel session, {List<String> weekdays = const []}) async {
+  Future<void> _purchaseGroupTraining(
+    TrainingSessionModel session, {
+    List<String> weekdays = const [],
+  }) async {
     int selectedDurationDays = 30;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) {
-          final selectedPrice = _sessionPriceForDuration(session.price, selectedDurationDays);
+          final selectedPrice = _sessionPriceForDuration(
+            session.price,
+            selectedDurationDays,
+          );
           return AlertDialog(
             title: Text('Uplati grupni trening: ${session.title}'),
             content: SizedBox(
@@ -1727,7 +1992,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Text('Teretana: ${session.gymName}'),
                   const SizedBox(height: 6),
-                  Text('Termin: ${session.startTime.substring(0, 5)} - ${session.endTime.substring(0, 5)}'),
+                  Text(
+                    'Termin: ${session.startTime.substring(0, 5)} - ${session.endTime.substring(0, 5)}',
+                  ),
                   if (weekdays.isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Text('Raspored: ${weekdays.join(' / ')}'),
@@ -1743,7 +2010,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           (days) => ChoiceChip(
                             label: Text(_durationLabel(days)),
                             selected: selectedDurationDays == days,
-                            onSelected: (_) => setLocal(() => selectedDurationDays = days),
+                            onSelected: (_) =>
+                                setLocal(() => selectedDurationDays = days),
                           ),
                         )
                         .toList(),
@@ -1761,8 +2029,14 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Otkaži')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Plati')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Otkaži'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Plati'),
+              ),
             ],
           );
         },
@@ -1783,10 +2057,13 @@ class _HomeScreenState extends State<HomeScreen> {
       final amount = result['amount'];
 
       if (sessionUrl != null && sessionUrl.toString().isNotEmpty) {
-        final parsedPaymentId = paymentId is int ? paymentId : int.tryParse('$paymentId') ?? 0;
-        await PaymentService.markPendingPayment(parsedPaymentId);
-        await _refreshPendingPaymentsCount();
-        final launched = await _launchStripeCheckout(sessionUrl.toString());
+        final parsedPaymentId = paymentId is int
+            ? paymentId
+            : int.tryParse('$paymentId') ?? 0;
+        final launched = await _launchStripeCheckoutForPayment(
+          paymentId: parsedPaymentId,
+          sessionUrl: sessionUrl.toString(),
+        );
         if (!launched) {
           throw 'Ne mogu otvoriti checkout URL.';
         }
@@ -1803,22 +2080,27 @@ class _HomeScreenState extends State<HomeScreen> {
         await _trackPaymentStatus(parsedPaymentId, scaffoldMessenger);
       } else {
         scaffoldMessenger.showSnackBar(
-          const SnackBar(content: Text('Stripe checkout nije dostupan za grupni trening.')),
+          const SnackBar(
+            content: Text('Stripe checkout nije dostupan za grupni trening.'),
+          ),
         );
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Greška pri plaćanju grupnog treninga: ${_friendlyError(e)}')),
+        SnackBar(
+          content: Text(
+            'Greška pri plaćanju grupnog treninga: ${_friendlyError(e)}',
+          ),
+        ),
       );
     }
   }
 
   Future<void> _openGymOffers(GymModel gym) async {
-    final gymPlans = _plans
-        .where((plan) => plan.gymId == gym.id && plan.isActive)
-        .toList()
-      ..sort((a, b) => a.durationDays.compareTo(b.durationDays));
+    final gymPlans =
+        _plans.where((plan) => plan.gymId == gym.id && plan.isActive).toList()
+          ..sort((a, b) => a.durationDays.compareTo(b.durationDays));
 
     final gymGroupOffers = _buildSessionOffers(
       _sessions.where((session) => session.gymId == gym.id).toList(),
@@ -1837,14 +2119,29 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(gym.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                Text(
+                  gym.name,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text('${gym.cityName}, ${gym.countryName}', style: const TextStyle(color: Color(0xFF64748B))),
+                Text(
+                  '${gym.cityName}, ${gym.countryName}',
+                  style: const TextStyle(color: Color(0xFF64748B)),
+                ),
                 const SizedBox(height: 14),
-                const Text('Članarine', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                const Text(
+                  'Članarine',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 8),
                 if (gymPlans.isEmpty)
-                  const Text('Ova teretana trenutno nema aktivnih planova članarine.', style: TextStyle(color: Color(0xFF8A94A8)))
+                  const Text(
+                    'Ova teretana trenutno nema aktivnih planova članarine.',
+                    style: TextStyle(color: Color(0xFF8A94A8)),
+                  )
                 else
                   ...gymPlans.map(
                     (plan) => Padding(
@@ -1862,12 +2159,27 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(plan.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                                  Text('${plan.durationDays} dana', style: const TextStyle(color: Color(0xFF64748B))),
+                                  Text(
+                                    plan.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${plan.durationDays} dana',
+                                    style: const TextStyle(
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
-                            Text('${plan.price.toStringAsFixed(0)} KM', style: const TextStyle(fontWeight: FontWeight.w800)),
+                            Text(
+                              '${plan.price.toStringAsFixed(0)} KM',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                             const SizedBox(width: 10),
                             FilledButton(
                               onPressed: () async {
@@ -1882,10 +2194,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 const SizedBox(height: 12),
-                const Text('Grupni treninzi', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                const Text(
+                  'Grupni treninzi',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 8),
                 if (gymGroupOffers.isEmpty)
-                  const Text('Ova teretana trenutno nema grupnih treninga za uplatu.', style: TextStyle(color: Color(0xFF8A94A8)))
+                  const Text(
+                    'Ova teretana trenutno nema grupnih treninga za uplatu.',
+                    style: TextStyle(color: Color(0xFF8A94A8)),
+                  )
                 else
                   ...gymGroupOffers.map(
                     (offer) => Padding(
@@ -1904,20 +2222,34 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(offer.representative.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                  Text(
+                                    offer.representative.title,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
                                   Text(
                                     '${offer.representative.startTime.substring(0, 5)} - ${offer.representative.endTime.substring(0, 5)}',
-                                    style: const TextStyle(color: Color(0xFF64748B)),
+                                    style: const TextStyle(
+                                      color: Color(0xFF64748B),
+                                    ),
                                   ),
                                   if (offer.weekdays.isNotEmpty)
                                     Text(
                                       'Raspored: ${offer.weekdays.join(' / ')}',
-                                      style: const TextStyle(color: Color(0xFF64748B)),
+                                      style: const TextStyle(
+                                        color: Color(0xFF64748B),
+                                      ),
                                     ),
                                 ],
                               ),
                             ),
-                            Text('od ${offer.representative.price.toStringAsFixed(0)} KM/mj', style: const TextStyle(fontWeight: FontWeight.w800)),
+                            Text(
+                              'od ${offer.representative.price.toStringAsFixed(0)} KM/mj',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                             const SizedBox(width: 10),
                             FilledButton(
                               onPressed: () async {
@@ -1973,13 +2305,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   TextFormField(
                     controller: firstNameCtrl,
                     decoration: const InputDecoration(labelText: 'Ime'),
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Ime je obavezno' : null,
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'Ime je obavezno'
+                        : null,
                   ),
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: lastNameCtrl,
                     decoration: const InputDecoration(labelText: 'Prezime'),
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Prezime je obavezno' : null,
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'Prezime je obavezno'
+                        : null,
                   ),
                   const SizedBox(height: 10),
                   TextFormField(
@@ -1995,7 +2331,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: phoneCtrl,
-                    decoration: const InputDecoration(labelText: 'Telefon (opcionalno)'),
+                    decoration: const InputDecoration(
+                      labelText: 'Telefon (opcionalno)',
+                    ),
                   ),
                 ],
               ),
@@ -2017,17 +2355,25 @@ class _HomeScreenState extends State<HomeScreen> {
                           firstName: firstNameCtrl.text.trim(),
                           lastName: lastNameCtrl.text.trim(),
                           email: emailCtrl.text.trim(),
-                          phoneNumber: phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
+                          phoneNumber: phoneCtrl.text.trim().isEmpty
+                              ? null
+                              : phoneCtrl.text.trim(),
                         );
                         if (!mounted || !ctx.mounted) return;
                         Navigator.of(ctx).pop();
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Profil je uspješno ažuriran.'), backgroundColor: Colors.green),
+                          const SnackBar(
+                            content: Text('Profil je uspješno ažuriran.'),
+                            backgroundColor: Colors.green,
+                          ),
                         );
                       } catch (e) {
                         if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+                          SnackBar(
+                            content: Text(e.toString()),
+                            backgroundColor: Colors.red,
+                          ),
                         );
                         if (mounted) setLocal(() => saving = false);
                       }
@@ -2063,17 +2409,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   TextFormField(
                     controller: oldCtrl,
                     obscureText: true,
-                    decoration: const InputDecoration(labelText: 'Trenutna lozinka'),
-                    validator: (v) => (v == null || v.isEmpty) ? 'Unesite trenutnu lozinku' : null,
+                    decoration: const InputDecoration(
+                      labelText: 'Trenutna lozinka',
+                    ),
+                    validator: (v) => (v == null || v.isEmpty)
+                        ? 'Unesite trenutnu lozinku'
+                        : null,
                   ),
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: newCtrl,
                     obscureText: true,
-                    decoration: const InputDecoration(labelText: 'Nova lozinka'),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Unesite novu lozinku';
-                      if (v.length < 6) return 'Lozinka mora imati najmanje 6 znakova';
+                    decoration: const InputDecoration(
+                      labelText: 'Nova lozinka',
+                    ),
+                      validator: (v) {
+                      if (v == null || v.isEmpty) {
+                        return 'Unesite novu lozinku';
+                      }
+                      if (v.length < 6) {
+                        return 'Lozinka mora imati najmanje 6 znakova';
+                      }
                       return null;
                     },
                   ),
@@ -2081,8 +2437,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   TextFormField(
                     controller: confirmCtrl,
                     obscureText: true,
-                    decoration: const InputDecoration(labelText: 'Potvrdite novu lozinku'),
-                    validator: (v) => v != newCtrl.text ? 'Lozinke se ne podudaraju' : null,
+                    decoration: const InputDecoration(
+                      labelText: 'Potvrdite novu lozinku',
+                    ),
+                    validator: (v) =>
+                        v != newCtrl.text ? 'Lozinke se ne podudaraju' : null,
                   ),
                 ],
               ),
@@ -2108,12 +2467,18 @@ class _HomeScreenState extends State<HomeScreen> {
                         if (!mounted || !ctx.mounted) return;
                         Navigator.of(ctx).pop();
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Lozinka je uspješno promijenjena.'), backgroundColor: Colors.green),
+                          const SnackBar(
+                            content: Text('Lozinka je uspješno promijenjena.'),
+                            backgroundColor: Colors.green,
+                          ),
                         );
                       } catch (e) {
                         if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+                          SnackBar(
+                            content: Text(e.toString()),
+                            backgroundColor: Colors.red,
+                          ),
                         );
                         if (mounted) setLocal(() => saving = false);
                       }
@@ -2175,7 +2540,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _formatMeasurementValue(double? value, {String suffix = ''}) {
     if (value == null) return '-';
-    final normalized = value % 1 == 0 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
+    final normalized = value % 1 == 0
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(1);
     return '$normalized$suffix';
   }
 
@@ -2212,10 +2579,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final formKey = GlobalKey<FormState>();
     DateTime selectedDate = DateTime.now();
 
-    InputDecoration decoration(String label) => InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        );
+    InputDecoration decoration(String label) =>
+        InputDecoration(labelText: label, border: const OutlineInputBorder());
 
     Future<void> saveMeasurement() async {
       if (formKey.currentState?.validate() != true) return;
@@ -2248,7 +2613,9 @@ class _HomeScreenState extends State<HomeScreen> {
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Mjerenje nije sačuvano: ${_friendlyError(e)}')),
+          SnackBar(
+            content: Text('Mjerenje nije sačuvano: ${_friendlyError(e)}'),
+          ),
         );
       }
     }
@@ -2291,7 +2658,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: TextFormField(
                           controller: weightCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           decoration: decoration('Težina (kg)'),
                         ),
                       ),
@@ -2299,7 +2668,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: TextFormField(
                           controller: bodyFatCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           decoration: decoration('Masno tkivo (%)'),
                         ),
                       ),
@@ -2311,7 +2682,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: TextFormField(
                           controller: chestCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           decoration: decoration('Prsa (cm)'),
                         ),
                       ),
@@ -2319,7 +2692,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: TextFormField(
                           controller: waistCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           decoration: decoration('Struk (cm)'),
                         ),
                       ),
@@ -2331,7 +2706,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: TextFormField(
                           controller: hipsCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           decoration: decoration('Bokovi (cm)'),
                         ),
                       ),
@@ -2339,7 +2716,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: TextFormField(
                           controller: armCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           decoration: decoration('Ruka (cm)'),
                         ),
                       ),
@@ -2348,7 +2727,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: legCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: decoration('Noga (cm)'),
                   ),
                   const SizedBox(height: 10),
@@ -2417,7 +2798,8 @@ class _HomeScreenState extends State<HomeScreen> {
   List<_SessionOffer> _buildSessionOffers(List<TrainingSessionModel> sessions) {
     final grouped = <String, List<TrainingSessionModel>>{};
     for (final session in sessions.where((s) => s.isGroup && s.isActive)) {
-      final key = '${session.gymId}|${session.title}|${session.trainerId}|${session.startTime}|${session.endTime}';
+      final key =
+          '${session.gymId}|${session.title}|${session.trainerId}|${session.startTime}|${session.endTime}';
       grouped.putIfAbsent(key, () => <TrainingSessionModel>[]).add(session);
     }
 
@@ -2430,12 +2812,11 @@ class _HomeScreenState extends State<HomeScreen> {
           .toSet()
           .toList();
       const weekdayOrder = ['Pon', 'Uto', 'Sri', 'Čet', 'Pet', 'Sub', 'Ned'];
-      weekdays.sort((a, b) => weekdayOrder.indexOf(a).compareTo(weekdayOrder.indexOf(b)));
-
-      return _SessionOffer(
-        representative: primary,
-        weekdays: weekdays,
+      weekdays.sort(
+        (a, b) => weekdayOrder.indexOf(a).compareTo(weekdayOrder.indexOf(b)),
       );
+
+      return _SessionOffer(representative: primary, weekdays: weekdays);
     }).toList();
 
     offers.sort((a, b) {
@@ -2485,7 +2866,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         labelText: 'Naziv treninga',
                         border: OutlineInputBorder(),
                       ),
-                      validator: (value) => (value == null || value.trim().isEmpty)
+                      validator: (value) =>
+                          (value == null || value.trim().isEmpty)
                           ? 'Unesite naziv treninga.'
                           : null,
                     ),
@@ -2527,7 +2909,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             children: [
                               Text(
                                 'Vježba ${index + 1}',
-                                style: const TextStyle(fontWeight: FontWeight.w700),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                               const SizedBox(height: 8),
                               TextFormField(
@@ -2536,7 +2920,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   labelText: 'Naziv vježbe',
                                   border: OutlineInputBorder(),
                                 ),
-                                validator: (value) => (value == null || value.trim().isEmpty)
+                                validator: (value) =>
+                                    (value == null || value.trim().isEmpty)
                                     ? 'Unesite naziv vježbe.'
                                     : null,
                               ),
@@ -2546,13 +2931,18 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Expanded(
                                     child: TextFormField(
                                       controller: weightCtrls[index],
-                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
                                       decoration: const InputDecoration(
                                         labelText: 'Kilaža (kg)',
                                         border: OutlineInputBorder(),
                                       ),
                                       validator: (value) {
-                                        if (value == null || value.trim().isEmpty) return 'Unesite kilažu.';
+                                        if (value == null || value.trim().isEmpty) {
+                                          return 'Unesite kilažu.';
+                                        }
                                         return _parseWeightInput(value) == null
                                             ? 'Neispravan broj.'
                                             : null;
@@ -2570,10 +2960,18 @@ class _HomeScreenState extends State<HomeScreen> {
                                         border: OutlineInputBorder(),
                                       ),
                                       validator: (value) {
-                                        if (value == null || value.trim().isEmpty) return 'Unesite ponavljanja.';
-                                        final normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
-                                        final valid = RegExp(r'^\d+(?:\s*[xX\-]\s*\d+|\s+\d+)?$').hasMatch(normalized);
-                                        return valid ? null : 'Format: 10x3, 10-3 ili 10 3';
+                                        if (value == null || value.trim().isEmpty) {
+                                          return 'Unesite ponavljanja.';
+                                        }
+                                        final normalized = value
+                                            .trim()
+                                            .replaceAll(RegExp(r'\s+'), ' ');
+                                        final valid = RegExp(
+                                          r'^\d+(?:\s*[xX\-]\s*\d+|\s+\d+)?$',
+                                        ).hasMatch(normalized);
+                                        return valid
+                                            ? null
+                                            : 'Format: 10x3, 10-3 ili 10 3';
                                       },
                                     ),
                                   ),
@@ -2593,7 +2991,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         alignLabelWithHint: true,
                         border: OutlineInputBorder(),
                       ),
-                      validator: (value) => (value == null || value.trim().isEmpty)
+                      validator: (value) =>
+                          (value == null || value.trim().isEmpty)
                           ? 'Dodajte detalje treninga.'
                           : null,
                     ),
@@ -2603,7 +3002,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Otkaži')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Otkaži'),
+            ),
             FilledButton(
               onPressed: () {
                 if (formKey.currentState?.validate() != true) return;
@@ -2624,7 +3026,9 @@ class _HomeScreenState extends State<HomeScreen> {
           if (parsedWeight == null) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Neispravna kilaža za vježbu ${index + 1}.')),
+                SnackBar(
+                  content: Text('Neispravna kilaža za vježbu ${index + 1}.'),
+                ),
               );
             }
             return;
@@ -2687,14 +3091,17 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Trening "${entry.name}" je prebačen u historiju.')),
+      SnackBar(
+        content: Text('Trening "${entry.name}" je prebačen u historiju.'),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-    final user = auth.user;
+    final user = context.select<AuthProvider, AuthResponse?>(
+      (auth) => auth.user,
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFFF1F2F6),
@@ -2726,10 +3133,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     _selectedIndex == 0
                         ? 'Pretraži teretane i trenere'
                         : _selectedIndex == 1
-                            ? 'Najbolje teretane za tebe'
-                            : _selectedIndex == 2
-                                ? 'Napredak i treninzi'
-                                : 'Moj profil',
+                        ? 'Najbolje teretane za tebe'
+                        : _selectedIndex == 2
+                        ? 'Napredak i treninzi'
+                        : 'Moj profil',
                     style: const TextStyle(
                       color: Colors.white70,
                       fontSize: 16,
@@ -2740,9 +3147,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             Expanded(
-              child: RefreshIndicator(
-                onRefresh: _refreshAll,
-                child: _buildTabContent(context, user),
+              child: PageStorage(
+                bucket: _tabScrollBucket,
+                child: RefreshIndicator(
+                  onRefresh: _refreshAll,
+                  child: _buildTabContent(context, user),
+                ),
               ),
             ),
           ],
@@ -2755,7 +3165,11 @@ class _HomeScreenState extends State<HomeScreen> {
           final requiresMembership = index == 0 || index == 2;
           if (requiresMembership && !_hasGymAccess) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Za Početnu i Napredak prvo odaberite teretanu i aktivirajte članarinu ili grupni trening.')),
+              const SnackBar(
+                content: Text(
+                  'Za Početnu i Napredak prvo odaberite teretanu i aktivirajte članarinu ili grupni trening.',
+                ),
+              ),
             );
             setState(() => _selectedIndex = 1);
             return;
@@ -2773,10 +3187,26 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         },
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Početna'),
-          NavigationDestination(icon: Icon(Icons.apartment_outlined), selectedIcon: Icon(Icons.apartment), label: 'Teretane'),
-          NavigationDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: 'Napredak'),
-          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Profil'),
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Početna',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.apartment_outlined),
+            selectedIcon: Icon(Icons.apartment),
+            label: 'Teretane',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.bar_chart_outlined),
+            selectedIcon: Icon(Icons.bar_chart),
+            label: 'Napredak',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profil',
+          ),
         ],
       ),
     );
@@ -2804,12 +3234,14 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildHomeTab(BuildContext context, AuthResponse? user) {
     if (!_hasGymAccess) {
       return ListView(
+        key: const PageStorageKey('home-tab-empty'),
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
           _emptyStateCard(
             title: 'Početna je dostupna nakon učlanjenja',
-            message: 'Odaberite teretanu i kupite članarinu ili grupni trening da otključate početnu stranicu vaše teretane.',
+            message:
+                'Odaberite teretanu i kupite članarinu ili grupni trening da otključate početnu stranicu vaše teretane.',
             icon: Icons.lock_outline,
             actionLabel: 'Idi na teretane',
             onAction: () => setState(() => _selectedIndex = 1),
@@ -2841,13 +3273,21 @@ class _HomeScreenState extends State<HomeScreen> {
     final activePlans = byDuration.values.take(4).toList();
     final groupSessionOffers = _buildSessionOffers(_sessions).take(3).toList();
     final now = DateTime.now();
-    final upcomingPaidGroupSessions = _paidGroupSchedule
-        .where((session) => _sessionStartAt(session).isAfter(now.subtract(const Duration(minutes: 1))))
-        .toList()
-      ..sort((a, b) => _sessionStartAt(a).compareTo(_sessionStartAt(b)));
-    final nextPaidGroupSession = upcomingPaidGroupSessions.isNotEmpty ? upcomingPaidGroupSessions.first : null;
+    final upcomingPaidGroupSessions =
+        _paidGroupSchedule
+            .where(
+              (session) => _sessionStartAt(
+                session,
+              ).isAfter(now.subtract(const Duration(minutes: 1))),
+            )
+            .toList()
+          ..sort((a, b) => _sessionStartAt(a).compareTo(_sessionStartAt(b)));
+    final nextPaidGroupSession = upcomingPaidGroupSessions.isNotEmpty
+        ? upcomingPaidGroupSessions.first
+        : null;
 
-    String prettyTime(String value) => value.length >= 5 ? value.substring(0, 5) : value;
+    String prettyTime(String value) =>
+        value.length >= 5 ? value.substring(0, 5) : value;
     String countdownText(DateTime sessionStart) {
       final diff = sessionStart.difference(now);
       if (diff.isNegative) return 'u toku';
@@ -2860,6 +3300,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return ListView(
+      key: const PageStorageKey('home-tab'),
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
@@ -2935,7 +3376,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF2DBB72).withValues(alpha: 0.3),
+                                color: const Color(
+                                  0xFF2DBB72,
+                                ).withValues(alpha: 0.3),
                                 blurRadius: 8,
                                 offset: const Offset(0, 2),
                               ),
@@ -3006,13 +3449,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     if (nextPaidGroupSession != null) ...[
                       _TopCard(
                         title: 'Najbliži plaćeni grupni trening',
-                        subtitle: '${nextPaidGroupSession.gymName} · ${countdownText(_sessionStartAt(nextPaidGroupSession))}',
+                        subtitle:
+                            '${nextPaidGroupSession.gymName} · ${countdownText(_sessionStartAt(nextPaidGroupSession))}',
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               nextPaidGroupSession.title,
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                             const SizedBox(height: 6),
                             Text(
@@ -3045,7 +3492,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: const Color(0xFF5D72E6).withValues(alpha: 0.15),
+                          color: const Color(
+                            0xFF5D72E6,
+                          ).withValues(alpha: 0.15),
                         ),
                       ),
                       child: Row(
@@ -3117,7 +3566,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               )
                             : Icon(_isCheckedIn ? Icons.logout : Icons.login),
-                        label: Text(_isCheckedIn ? 'Izađi iz teretane' : 'Ušao sam u teretanu'),
+                        label: Text(
+                          _isCheckedIn
+                              ? 'Izađi iz teretane'
+                              : 'Ušao sam u teretanu',
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -3244,7 +3697,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 subtitle: 'Pregled statusa',
                 onTap: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (ctx) => const MyMembershipsScreen()),
+                  MaterialPageRoute(
+                    builder: (ctx) => const MyMembershipsScreen(),
+                  ),
                 ),
               ),
             ),
@@ -3263,7 +3718,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 subtitle: 'Posjete',
                 onTap: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (ctx) => const CheckInHistoryScreen()),
+                  MaterialPageRoute(
+                    builder: (ctx) => const CheckInHistoryScreen(),
+                  ),
                 ),
               ),
             ),
@@ -3276,7 +3733,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 subtitle: 'Zahtjev',
                 onTap: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (ctx) => const TrainerApplicationScreen()),
+                  MaterialPageRoute(
+                    builder: (ctx) => const TrainerApplicationScreen(),
+                  ),
                 ),
               ),
             ),
@@ -3289,12 +3748,19 @@ class _HomeScreenState extends State<HomeScreen> {
         if (_gyms.isNotEmpty) ...[
           Row(
             children: [
-              const Icon(Icons.store_mall_directory_outlined, color: Color(0xFF64748B), size: 18),
+              const Icon(
+                Icons.store_mall_directory_outlined,
+                color: Color(0xFF64748B),
+                size: 18,
+              ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   'Ponuda za teretanu: $_effectiveShopGymName',
-                  style: const TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -3339,9 +3805,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                     icon: const Icon(Icons.clear),
                   ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
           ),
         ),
         const SizedBox(height: 10),
@@ -3353,7 +3817,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 (category) => ChoiceChip(
                   label: Text(category),
                   selected: _selectedShopCategory == category,
-                  onSelected: (_) => setState(() => _selectedShopCategory = category),
+                  onSelected: (_) =>
+                      setState(() => _selectedShopCategory = category),
                 ),
               )
               .toList(),
@@ -3362,7 +3827,8 @@ class _HomeScreenState extends State<HomeScreen> {
         if (_filteredShopProducts.isEmpty)
           _emptyStateCard(
             title: 'Nema artikala',
-            message: 'Nismo pronašli artikle za odabranu kategoriju ili upit pretrage.',
+            message:
+                'Nismo pronašli artikle za odabranu kategoriju ili upit pretrage.',
             icon: Icons.inventory_2_outlined,
             actionLabel: 'Resetuj filtere',
             onAction: () {
@@ -3401,7 +3867,9 @@ class _HomeScreenState extends State<HomeScreen> {
             child: TextButton.icon(
               onPressed: _openShopCheckout,
               icon: const Icon(Icons.shopping_cart_checkout),
-              label: Text('Korpa ($_shopItemsCount) · ${_shopTotal.toStringAsFixed(0)} KM'),
+              label: Text(
+                'Korpa ($_shopItemsCount) · ${_shopTotal.toStringAsFixed(0)} KM',
+              ),
             ),
           ),
         ],
@@ -3410,7 +3878,10 @@ class _HomeScreenState extends State<HomeScreen> {
         const _SectionTitle(icon: '💳', title: 'Članarine'),
         const SizedBox(height: 10),
         if (activePlans.isEmpty)
-          const Text('Nema dostupnih članarina.', style: TextStyle(color: Color(0xFF8A94A8)))
+          const Text(
+            'Nema dostupnih članarina.',
+            style: TextStyle(color: Color(0xFF8A94A8)),
+          )
         else
           GridView.count(
             crossAxisCount: 2,
@@ -3425,8 +3896,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     emoji: plan.durationDays >= 300
                         ? '🎯'
                         : plan.durationDays >= 180
-                            ? '📋'
-                            : '🗓️',
+                        ? '📋'
+                        : '🗓️',
                     title: plan.name,
                     price: '${plan.price.toStringAsFixed(0)} KM',
                     onBuy: () => _purchaseMembershipPlan(plan),
@@ -3444,18 +3915,26 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Center(child: CircularProgressIndicator()),
           )
         else if (groupSessionOffers.isEmpty)
-          const Text('Trenutno nema grupnih treninga.', style: TextStyle(color: Color(0xFF8A94A8)))
+          const Text(
+            'Trenutno nema grupnih treninga.',
+            style: TextStyle(color: Color(0xFF8A94A8)),
+          )
         else
           ...groupSessionOffers.map(
             (offer) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: _GroupTrainingTile(
                 title: offer.representative.title,
-                schedule: '${offer.weekdays.isEmpty ? 'Sedmično' : offer.weekdays.join(' / ')} · ${prettyTime(offer.representative.startTime)} - ${prettyTime(offer.representative.endTime)}',
-                spotsLabel: 'Slobodno ${((offer.representative.maxParticipants - offer.representative.currentParticipants).clamp(0, offer.representative.maxParticipants))}/${offer.representative.maxParticipants}',
-                isReserved: _reservedSessionIds.contains(offer.representative.id),
+                schedule:
+                    '${offer.weekdays.isEmpty ? 'Sedmično' : offer.weekdays.join(' / ')} · ${prettyTime(offer.representative.startTime)} - ${prettyTime(offer.representative.endTime)}',
+                spotsLabel:
+                    'Slobodno ${((offer.representative.maxParticipants - offer.representative.currentParticipants).clamp(0, offer.representative.maxParticipants))}/${offer.representative.maxParticipants}',
+                isReserved: _reservedSessionIds.contains(
+                  offer.representative.id,
+                ),
                 isBusy: _reservationBusyIds.contains(offer.representative.id),
-                onReserveToggle: () => _toggleSessionReservation(offer.representative),
+                onReserveToggle: () =>
+                    _toggleSessionReservation(offer.representative),
               ),
             ),
           ),
@@ -3476,10 +3955,7 @@ class _HomeScreenState extends State<HomeScreen> {
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF6B78E5),
-                Color(0xFF7B52D7),
-              ],
+              colors: [Color(0xFF6B78E5), Color(0xFF7B52D7)],
             ),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
@@ -3495,10 +3971,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const Row(
                 children: [
-                  Text(
-                    '🔥',
-                    style: TextStyle(fontSize: 20),
-                  ),
+                  Text('🔥', style: TextStyle(fontSize: 20)),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -3580,126 +4053,150 @@ class _HomeScreenState extends State<HomeScreen> {
     final gymById = {for (final gym in _gyms) gym.id: gym};
 
     final sessionsByGym = <int, List<TrainingSessionModel>>{};
-    for (final session in _sessions.where((session) => session.isGroup && session.isActive)) {
+    for (final session in _sessions.where(
+      (session) => session.isGroup && session.isActive,
+    )) {
       sessionsByGym.putIfAbsent(session.gymId, () => []).add(session);
     }
 
     final trainerSessionMap = <int, List<TrainingSessionModel>>{};
     for (final session in _sessions.where((session) => session.isActive)) {
-      trainerSessionMap.putIfAbsent(session.trainerId, () => <TrainingSessionModel>[]).add(session);
+      trainerSessionMap
+          .putIfAbsent(session.trainerId, () => <TrainingSessionModel>[])
+          .add(session);
     }
 
     bool trainerMatches(_TrainerDirectoryData trainer) {
-      final cityMatches = selectedCity == 'Svi gradovi' ||
-          trainer.cityNames.any((city) => city.toLowerCase().contains(selectedCity.toLowerCase()));
-      final typeMatches = selectedType == null ||
-          trainer.specializations.any((type) => type.toLowerCase() == selectedType);
-      final searchMatches = search.isEmpty ||
+      final cityMatches =
+          selectedCity == 'Svi gradovi' ||
+          trainer.cityNames.any(
+            (city) => city.toLowerCase().contains(selectedCity.toLowerCase()),
+          );
+      final typeMatches =
+          selectedType == null ||
+          trainer.specializations.any(
+            (type) => type.toLowerCase() == selectedType,
+          );
+      final searchMatches =
+          search.isEmpty ||
           trainer.name.toLowerCase().contains(search) ||
           trainer.headline.toLowerCase().contains(search) ||
-          trainer.specializations.any((type) => type.toLowerCase().contains(search)) ||
-          trainer.gymNames.any((gymName) => gymName.toLowerCase().contains(search));
+          trainer.specializations.any(
+            (type) => type.toLowerCase().contains(search),
+          ) ||
+          trainer.gymNames.any(
+            (gymName) => gymName.toLowerCase().contains(search),
+          );
       return cityMatches && typeMatches && searchMatches;
     }
 
-    final trainerCards = trainerSessionMap.entries
-        .map((entry) {
-          final sessions = entry.value;
-          final firstSession = sessions.first;
-          final name = firstSession.trainerFullName.trim().isEmpty
-              ? 'Trener #${firstSession.trainerId}'
-              : firstSession.trainerFullName;
-          final specializations = <String>{
-            ...sessions
-                .map((session) => session.trainingTypeName.trim())
-                .where((name) => name.isNotEmpty),
-          }.toList()
-            ..sort();
-          final gymNames = <String>{
-            ...sessions
-                .map((session) => session.gymName.trim())
-                .where((name) => name.isNotEmpty),
-          }.toList()
-            ..sort();
-          final cityNames = <String>{
-            for (final session in sessions)
-              if (gymById[session.gymId] != null) gymById[session.gymId]!.cityName,
-          }.toList()
-            ..sort();
-          final nextSessionAt = sessions
-              .map(_sessionStartAt)
-              .where((date) => date.isAfter(DateTime.now()))
-              .fold<DateTime?>(null, (current, value) {
-            if (current == null) return value;
-            return value.isBefore(current) ? value : current;
-          });
-          final averageLoad = sessions.isEmpty
-              ? 0.0
-              : sessions.fold<double>(
-                    0,
-                    (sum, session) =>
-                        sum +
-                        (session.maxParticipants == 0
-                            ? 0
-                            : session.currentParticipants / session.maxParticipants),
-                  ) /
-                  sessions.length;
-          final rating = (4.0 + (averageLoad * 0.9) + (sessions.length >= 5 ? 0.1 : 0))
-              .clamp(4.0, 5.0)
-              .toStringAsFixed(1);
+    final trainerCards =
+        trainerSessionMap.entries
+            .map((entry) {
+              final sessions = entry.value;
+              final firstSession = sessions.first;
+              final name = firstSession.trainerFullName.trim().isEmpty
+                  ? 'Trener #${firstSession.trainerId}'
+                  : firstSession.trainerFullName;
+              final specializations = <String>{
+                ...sessions
+                    .map((session) => session.trainingTypeName.trim())
+                    .where((name) => name.isNotEmpty),
+              }.toList()..sort();
+              final gymNames = <String>{
+                ...sessions
+                    .map((session) => session.gymName.trim())
+                    .where((name) => name.isNotEmpty),
+              }.toList()..sort();
+              final cityNames = <String>{
+                for (final session in sessions)
+                  if (gymById[session.gymId] != null)
+                    gymById[session.gymId]!.cityName,
+              }.toList()..sort();
+              final nextSessionAt = sessions
+                  .map(_sessionStartAt)
+                  .where((date) => date.isAfter(DateTime.now()))
+                  .fold<DateTime?>(null, (current, value) {
+                    if (current == null) return value;
+                    return value.isBefore(current) ? value : current;
+                  });
+              final averageLoad = sessions.isEmpty
+                  ? 0.0
+                  : sessions.fold<double>(
+                          0,
+                          (sum, session) =>
+                              sum +
+                              (session.maxParticipants == 0
+                                  ? 0
+                                  : session.currentParticipants /
+                                        session.maxParticipants),
+                        ) /
+                        sessions.length;
+              final rating =
+                  (4.0 + (averageLoad * 0.9) + (sessions.length >= 5 ? 0.1 : 0))
+                      .clamp(4.0, 5.0)
+                      .toStringAsFixed(1);
 
-          return _TrainerDirectoryData(
-            trainerId: firstSession.trainerId,
-            name: name,
-            headline: specializations.isEmpty
-                ? 'Personalni trener'
-                : '${specializations.take(2).join(' • ')} trener',
-            rating: rating,
-            sessionCount: sessions.length,
-            groupSessionCount: sessions.where((session) => session.isGroup).length,
-            specializations: specializations,
-            gymNames: gymNames,
-            cityNames: cityNames,
-            nextAvailableLabel: nextSessionAt == null
-                ? 'Nema buducih termina'
-                : '${nextSessionAt.day.toString().padLeft(2, '0')}.${nextSessionAt.month.toString().padLeft(2, '0')}.${nextSessionAt.year} u ${nextSessionAt.hour.toString().padLeft(2, '0')}:${nextSessionAt.minute.toString().padLeft(2, '0')}',
-          );
-        })
-        .where(trainerMatches)
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+              return _TrainerDirectoryData(
+                trainerId: firstSession.trainerId,
+                name: name,
+                headline: specializations.isEmpty
+                    ? 'Personalni trener'
+                    : '${specializations.take(2).join(' • ')} trener',
+                rating: rating,
+                sessionCount: sessions.length,
+                groupSessionCount: sessions
+                    .where((session) => session.isGroup)
+                    .length,
+                specializations: specializations,
+                gymNames: gymNames,
+                cityNames: cityNames,
+                nextAvailableLabel: nextSessionAt == null
+                    ? 'Nema buducih termina'
+                    : '${nextSessionAt.day.toString().padLeft(2, '0')}.${nextSessionAt.month.toString().padLeft(2, '0')}.${nextSessionAt.year} u ${nextSessionAt.hour.toString().padLeft(2, '0')}:${nextSessionAt.minute.toString().padLeft(2, '0')}',
+              );
+            })
+            .where(trainerMatches)
+            .toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
 
-    final backendTrainerCards = _trainerProfiles
-        .map(
-          (trainer) => _TrainerDirectoryData(
-            trainerId: trainer.trainerId,
-            name: trainer.fullName,
-            headline: trainer.trainingTypes.isEmpty
-                ? 'Personalni trener'
-                : '${trainer.trainingTypes.take(2).join(' • ')} trener',
-            rating: trainer.rating.toStringAsFixed(1),
-            sessionCount: trainer.sessionCount,
-            groupSessionCount: trainer.groupSessionCount,
-            specializations: trainer.trainingTypes,
-            gymNames: trainer.gymNames,
-            cityNames: trainer.cityNames,
-            nextAvailableLabel: _formatTrainerNextAvailable(trainer.nextAvailableAt),
-            biography: trainer.biography,
-            experience: trainer.experience,
-            certifications: trainer.certifications,
-            availability: trainer.availability,
-            email: trainer.email,
-            phoneNumber: trainer.phoneNumber,
-          ),
-        )
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
-    final displayedTrainerCards =
-        backendTrainerCards.isNotEmpty ? backendTrainerCards : trainerCards;
+    final backendTrainerCards =
+        _trainerProfiles
+            .map(
+              (trainer) => _TrainerDirectoryData(
+                trainerId: trainer.trainerId,
+                name: trainer.fullName,
+                headline: trainer.trainingTypes.isEmpty
+                    ? 'Personalni trener'
+                    : '${trainer.trainingTypes.take(2).join(' • ')} trener',
+                rating: trainer.rating.toStringAsFixed(1),
+                sessionCount: trainer.sessionCount,
+                groupSessionCount: trainer.groupSessionCount,
+                specializations: trainer.trainingTypes,
+                gymNames: trainer.gymNames,
+                cityNames: trainer.cityNames,
+                nextAvailableLabel: _formatTrainerNextAvailable(
+                  trainer.nextAvailableAt,
+                ),
+                biography: trainer.biography,
+                experience: trainer.experience,
+                certifications: trainer.certifications,
+                availability: trainer.availability,
+                email: trainer.email,
+                phoneNumber: trainer.phoneNumber,
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
+    final displayedTrainerCards = backendTrainerCards.isNotEmpty
+        ? backendTrainerCards
+        : trainerCards;
 
     List<String> tagsForGym(GymModel gym) {
       final tags = <String>{
-        ...?sessionsByGym[gym.id]?.map((session) => session.trainingTypeName).where((name) => name.isNotEmpty),
+        ...?sessionsByGym[gym.id]
+            ?.map((session) => session.trainingTypeName)
+            .where((name) => name.isNotEmpty),
       };
       if (tags.isEmpty) {
         tags.add(gym.isOpen ? 'Otvoreno' : 'Zatvoreno');
@@ -3708,16 +4205,26 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     bool matchesGym(GymModel gym) {
-      final cityMatches = selectedCity == 'Svi gradovi' || gym.cityName.toLowerCase().contains(selectedCity.toLowerCase());
-      final typeMatches = selectedType == null ||
-          (sessionsByGym[gym.id]?.any((session) => session.trainingTypeName.toLowerCase() == selectedType) ?? false);
-      final searchMatches = search.isEmpty ||
+      final cityMatches =
+          selectedCity == 'Svi gradovi' ||
+          gym.cityName.toLowerCase().contains(selectedCity.toLowerCase());
+      final typeMatches =
+          selectedType == null ||
+          (sessionsByGym[gym.id]?.any(
+                (session) =>
+                    session.trainingTypeName.toLowerCase() == selectedType,
+              ) ??
+              false);
+      final searchMatches =
+          search.isEmpty ||
           gym.name.toLowerCase().contains(search) ||
           gym.address.toLowerCase().contains(search) ||
           gym.cityName.toLowerCase().contains(search) ||
-          (sessionsByGym[gym.id]?.any((session) =>
-                  session.title.toLowerCase().contains(search) ||
-                  session.trainingTypeName.toLowerCase().contains(search)) ??
+          (sessionsByGym[gym.id]?.any(
+                (session) =>
+                    session.title.toLowerCase().contains(search) ||
+                    session.trainingTypeName.toLowerCase().contains(search),
+              ) ??
               false);
       return cityMatches && typeMatches && searchMatches;
     }
@@ -3732,7 +4239,8 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final session in reservedAndPaidSessions) {
       final typeName = session.trainingTypeName.trim().toLowerCase();
       if (typeName.isNotEmpty) {
-        preferredTypeWeights[typeName] = (preferredTypeWeights[typeName] ?? 0) + 3;
+        preferredTypeWeights[typeName] =
+            (preferredTypeWeights[typeName] ?? 0) + 3;
       }
     }
 
@@ -3743,22 +4251,26 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    if (_selectedTrainingType != null && _selectedTrainingType!.trim().isNotEmpty) {
+    if (_selectedTrainingType != null &&
+        _selectedTrainingType!.trim().isNotEmpty) {
       final selected = _selectedTrainingType!.trim().toLowerCase();
-      preferredTypeWeights[selected] = (preferredTypeWeights[selected] ?? 0) + 5;
+      preferredTypeWeights[selected] =
+          (preferredTypeWeights[selected] ?? 0) + 5;
     }
 
     for (final training in _completedCustomTrainings) {
       for (final exercise in training.exercises) {
         final exerciseName = exercise.exerciseName.toLowerCase();
         if (exerciseName.contains('cardio') || exerciseName.contains('traka')) {
-          preferredTypeWeights['kardio'] = (preferredTypeWeights['kardio'] ?? 0) + 1;
+          preferredTypeWeights['kardio'] =
+              (preferredTypeWeights['kardio'] ?? 0) + 1;
         }
         if (exerciseName.contains('bench') ||
             exerciseName.contains('squat') ||
             exerciseName.contains('deadlift') ||
             exerciseName.contains('teg')) {
-          preferredTypeWeights['utezi'] = (preferredTypeWeights['utezi'] ?? 0) + 1;
+          preferredTypeWeights['utezi'] =
+              (preferredTypeWeights['utezi'] ?? 0) + 1;
         }
       }
     }
@@ -3787,7 +4299,9 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
-      final occupancyRatio = gym.capacity == 0 ? 0.0 : gym.currentOccupancy / gym.capacity;
+      final occupancyRatio = gym.capacity == 0
+          ? 0.0
+          : gym.currentOccupancy / gym.capacity;
       if (occupancyRatio >= 0.35 && occupancyRatio <= 0.85) {
         score += 1.2;
       } else if (occupancyRatio < 0.2) {
@@ -3799,8 +4313,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final visibleGyms = _gyms.where(matchesGym).toList();
-    final rankedGyms = [...visibleGyms]
-      ..sort((a, b) => recommendationScore(b).compareTo(recommendationScore(a)));
+    final rankedGyms = [
+      ...visibleGyms,
+    ]..sort((a, b) => recommendationScore(b).compareTo(recommendationScore(a)));
 
     final highlyRecommended = rankedGyms.take(2).toList();
 
@@ -3809,12 +4324,20 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     final recommendedForYou = recommendedSource.isNotEmpty
         ? recommendedSource.take(2).toList()
-        : rankedGyms.where((gym) => !highlyRecommended.any((featured) => featured.id == gym.id)).take(2).toList();
+        : rankedGyms
+              .where(
+                (gym) =>
+                    !highlyRecommended.any((featured) => featured.id == gym.id),
+              )
+              .take(2)
+              .toList();
 
     final otherGyms = visibleGyms
-        .where((gym) =>
-            !highlyRecommended.any((featured) => featured.id == gym.id) &&
-            !recommendedForYou.any((recommended) => recommended.id == gym.id))
+        .where(
+          (gym) =>
+              !highlyRecommended.any((featured) => featured.id == gym.id) &&
+              !recommendedForYou.any((recommended) => recommended.id == gym.id),
+        )
         .toList();
 
     final preferenceLabels = preferredTypeWeights.entries.toList()
@@ -3822,30 +4345,34 @@ class _HomeScreenState extends State<HomeScreen> {
     final recommendationReason = selectedType != null
         ? 'Na osnovu odabranog tipa treninga: $_selectedTrainingType'
         : preferenceLabels.isNotEmpty
-            ? 'Na osnovu vase aktivnosti: ${preferenceLabels.take(2).map((entry) => entry.key).join(', ')}'
-            : _activeMembership != null
-                ? 'Na osnovu vase aktivne clanarine i posjecenosti'
-                : 'Na osnovu dostupnih termina i aktivnosti clanova';
+        ? 'Na osnovu vase aktivnosti: ${preferenceLabels.take(2).map((entry) => entry.key).join(', ')}'
+        : _activeMembership != null
+        ? 'Na osnovu vase aktivne clanarine i posjecenosti'
+        : 'Na osnovu dostupnih termina i aktivnosti clanova';
 
     final recommendationByGymId = {
       for (final item in _recommendedGyms) item.gymId: item,
     };
-    final backendRankedGyms = visibleGyms
-        .where((gym) => recommendationByGymId.containsKey(gym.id))
-        .toList()
-      ..sort((a, b) {
-        final left = recommendationByGymId[a.id]!.score;
-        final right = recommendationByGymId[b.id]!.score;
-        return right.compareTo(left);
-      });
-    final displayedHighlyRecommended =
-        backendRankedGyms.isNotEmpty ? backendRankedGyms.take(2).toList() : highlyRecommended;
+    final backendRankedGyms =
+        visibleGyms
+            .where((gym) => recommendationByGymId.containsKey(gym.id))
+            .toList()
+          ..sort((a, b) {
+            final left = recommendationByGymId[a.id]!.score;
+            final right = recommendationByGymId[b.id]!.score;
+            return right.compareTo(left);
+          });
+    final displayedHighlyRecommended = backendRankedGyms.isNotEmpty
+        ? backendRankedGyms.take(2).toList()
+        : highlyRecommended;
     final displayedRecommendedForYou = backendRankedGyms.length > 2
         ? backendRankedGyms.skip(2).take(2).toList()
         : recommendedForYou;
 
     String ratingFromGym(GymModel gym) {
-      final ratio = gym.capacity == 0 ? 0.0 : (gym.currentOccupancy / gym.capacity);
+      final ratio = gym.capacity == 0
+          ? 0.0
+          : (gym.currentOccupancy / gym.capacity);
       final rating = 3.5 + (ratio * 1.5);
       return rating.clamp(3.5, 5.0).toStringAsFixed(1);
     }
@@ -3869,6 +4396,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return ListView(
+      key: const PageStorageKey('gyms-tab'),
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
@@ -3896,7 +4424,10 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 14),
         const Text(
           'TIP PREGLEDA',
-          style: TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w800),
+          style: TextStyle(
+            color: Color(0xFF6B7280),
+            fontWeight: FontWeight.w800,
+          ),
         ),
         const SizedBox(height: 8),
         Row(
@@ -3905,10 +4436,16 @@ class _HomeScreenState extends State<HomeScreen> {
               child: OutlinedButton.icon(
                 onPressed: () => setState(() => _showTrainers = false),
                 style: OutlinedButton.styleFrom(
-                  backgroundColor: !_showTrainers ? const Color(0xFF657BE6) : Colors.white,
-                  foregroundColor: !_showTrainers ? Colors.white : const Color(0xFF657BE6),
+                  backgroundColor: !_showTrainers
+                      ? const Color(0xFF657BE6)
+                      : Colors.white,
+                  foregroundColor: !_showTrainers
+                      ? Colors.white
+                      : const Color(0xFF657BE6),
                   side: BorderSide(
-                    color: !_showTrainers ? const Color(0xFF657BE6) : const Color(0xFFD9E2F2),
+                    color: !_showTrainers
+                        ? const Color(0xFF657BE6)
+                        : const Color(0xFFD9E2F2),
                   ),
                 ),
                 icon: const Icon(Icons.apartment, size: 18),
@@ -3920,10 +4457,16 @@ class _HomeScreenState extends State<HomeScreen> {
               child: OutlinedButton.icon(
                 onPressed: () => setState(() => _showTrainers = true),
                 style: OutlinedButton.styleFrom(
-                  backgroundColor: _showTrainers ? const Color(0xFF657BE6) : Colors.white,
-                  foregroundColor: _showTrainers ? Colors.white : const Color(0xFF657BE6),
+                  backgroundColor: _showTrainers
+                      ? const Color(0xFF657BE6)
+                      : Colors.white,
+                  foregroundColor: _showTrainers
+                      ? Colors.white
+                      : const Color(0xFF657BE6),
                   side: BorderSide(
-                    color: _showTrainers ? const Color(0xFF657BE6) : const Color(0xFFD9E2F2),
+                    color: _showTrainers
+                        ? const Color(0xFF657BE6)
+                        : const Color(0xFFD9E2F2),
                   ),
                 ),
                 icon: const Icon(Icons.person, size: 18),
@@ -3935,7 +4478,10 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 12),
         const Text(
           'GRAD',
-          style: TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w800),
+          style: TextStyle(
+            color: Color(0xFF6B7280),
+            fontWeight: FontWeight.w800,
+          ),
         ),
         const SizedBox(height: 8),
         Container(
@@ -3950,10 +4496,9 @@ class _HomeScreenState extends State<HomeScreen> {
               value: _selectedCity,
               isExpanded: true,
               items: _cities
-                  .map((city) => DropdownMenuItem(
-                        value: city,
-                        child: Text(city),
-                      ))
+                  .map(
+                    (city) => DropdownMenuItem(value: city, child: Text(city)),
+                  )
                   .toList(),
               onChanged: (value) {
                 if (value == null) return;
@@ -3966,28 +4511,41 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 12),
         const Text(
           'TIP TRENINGA',
-          style: TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w800),
+          style: TextStyle(
+            color: Color(0xFF6B7280),
+            fontWeight: FontWeight.w800,
+          ),
         ),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: (_trainingTypes.isNotEmpty
-                  ? _trainingTypes
-                  : const ['Yoga', 'Pilates', 'Utezi', 'Kardio', 'CrossFit', 'HIIT'])
-              .map(
-                (type) => ChoiceChip(
-                  label: Text(type),
-                  selected: _selectedTrainingType == type,
-                  onSelected: (_) {
-                    setState(() {
-                      _selectedTrainingType = _selectedTrainingType == type ? null : type;
-                    });
-                    _scheduleDiscoveryRefresh();
-                  },
-                ),
-              )
-              .toList(),
+          children:
+              (_trainingTypes.isNotEmpty
+                      ? _trainingTypes
+                      : const [
+                          'Yoga',
+                          'Pilates',
+                          'Utezi',
+                          'Kardio',
+                          'CrossFit',
+                          'HIIT',
+                        ])
+                  .map(
+                    (type) => ChoiceChip(
+                      label: Text(type),
+                      selected: _selectedTrainingType == type,
+                      onSelected: (_) {
+                        setState(() {
+                          _selectedTrainingType = _selectedTrainingType == type
+                              ? null
+                              : type;
+                        });
+                        _scheduleDiscoveryRefresh();
+                      },
+                    ),
+                  )
+                  .toList(),
         ),
         const SizedBox(height: 14),
         Container(
@@ -4013,7 +4571,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     SizedBox(height: 2),
                     Text(
                       'Apliciraj i dijeli svoje znanje',
-                      style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
@@ -4021,7 +4582,9 @@ class _HomeScreenState extends State<HomeScreen> {
               FilledButton(
                 onPressed: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (ctx) => const TrainerApplicationScreen()),
+                  MaterialPageRoute(
+                    builder: (ctx) => const TrainerApplicationScreen(),
+                  ),
                 ),
                 style: FilledButton.styleFrom(
                   backgroundColor: Colors.white,
@@ -4036,7 +4599,10 @@ class _HomeScreenState extends State<HomeScreen> {
         if (_showTrainers) ...[
           Text(
             '${displayedTrainerCards.length} trenera',
-            style: const TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w700),
+            style: const TextStyle(
+              color: Color(0xFF6B7280),
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 10),
           if (_loadingDiscoveryData && displayedTrainerCards.isEmpty)
@@ -4045,7 +4611,10 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (displayedTrainerCards.isEmpty)
-            const Text('Nema trenera za odabrane filtere.', style: TextStyle(color: Color(0xFF8A94A8)))
+            const Text(
+              'Nema trenera za odabrane filtere.',
+              style: TextStyle(color: Color(0xFF8A94A8)),
+            )
           else
             ...displayedTrainerCards.map(
               (trainer) => Padding(
@@ -4059,7 +4628,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ] else ...[
           const _SectionTitle(icon: '⭐', title: 'Highly Recommended'),
           const SizedBox(height: 6),
-          const Text('Najbolje ocijenjene teretane sa 4.5+ zvjezdica', style: TextStyle(color: Color(0xFF8A94A8))),
+          const Text(
+            'Najbolje ocijenjene teretane sa 4.5+ zvjezdica',
+            style: TextStyle(color: Color(0xFF8A94A8)),
+          ),
           const SizedBox(height: 12),
           if (_loadingDiscoveryData && displayedHighlyRecommended.isEmpty)
             const Padding(
@@ -4067,7 +4639,10 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (displayedHighlyRecommended.isEmpty)
-            const Text('Nema rezultata za odabrane filtere.', style: TextStyle(color: Color(0xFF8A94A8)))
+            const Text(
+              'Nema rezultata za odabrane filtere.',
+              style: TextStyle(color: Color(0xFF8A94A8)),
+            )
           else
             ...displayedHighlyRecommended.map(
               (gym) => Padding(
@@ -4078,9 +4653,15 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 18),
           const _SectionTitle(icon: '✨', title: 'Recommended For You'),
           const SizedBox(height: 6),
-          const Text('Na osnovu vaših preferencija: Yoga, Pilates', style: TextStyle(color: Color(0xFF8A94A8))),
+          const Text(
+            'Na osnovu vaših preferencija: Yoga, Pilates',
+            style: TextStyle(color: Color(0xFF8A94A8)),
+          ),
           const SizedBox(height: 12),
-          Text(recommendationReason, style: const TextStyle(color: Color(0xFF8A94A8))),
+          Text(
+            recommendationReason,
+            style: const TextStyle(color: Color(0xFF8A94A8)),
+          ),
           const SizedBox(height: 4),
           if (_loadingDiscoveryData && displayedRecommendedForYou.isEmpty)
             const Padding(
@@ -4088,7 +4669,10 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (displayedRecommendedForYou.isEmpty)
-            const Text('Nema preporuka za trenutni filter.', style: TextStyle(color: Color(0xFF8A94A8)))
+            const Text(
+              'Nema preporuka za trenutni filter.',
+              style: TextStyle(color: Color(0xFF8A94A8)),
+            )
           else
             ...displayedRecommendedForYou.map(
               (gym) => Padding(
@@ -4099,10 +4683,16 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 18),
           const _SectionTitle(icon: '🏙️', title: 'Ostale teretane'),
           const SizedBox(height: 6),
-          const Text('Sve dostupne teretane u vašem gradu', style: TextStyle(color: Color(0xFF8A94A8))),
+          const Text(
+            'Sve dostupne teretane u vašem gradu',
+            style: TextStyle(color: Color(0xFF8A94A8)),
+          ),
           const SizedBox(height: 12),
           if (otherGyms.isEmpty)
-            const Text('Nema dodatnih teretana za ovaj izbor.', style: TextStyle(color: Color(0xFF8A94A8)))
+            const Text(
+              'Nema dodatnih teretana za ovaj izbor.',
+              style: TextStyle(color: Color(0xFF8A94A8)),
+            )
           else
             ...otherGyms.map(
               (gym) => Padding(
@@ -4132,208 +4722,252 @@ class _HomeScreenState extends State<HomeScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-          decoration: const BoxDecoration(
-            color: Color(0xFFF6F8FC),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 44,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD6DDEA),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Row(
+        final maxHeight = MediaQuery.of(context).size.height * 0.9;
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF6F8FC),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const CircleAvatar(
-                      radius: 28,
-                      backgroundColor: Color(0xFF657BE6),
-                      child: Icon(Icons.fitness_center, color: Colors.white),
+                    Center(
+                      child: Container(
+                        width: 44,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD6DDEA),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        const CircleAvatar(
+                          radius: 28,
+                          backgroundColor: Color(0xFF657BE6),
+                          child: Icon(
+                            Icons.fitness_center,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                trainer.name,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF1E293B),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                trainer.headline,
+                                style: const TextStyle(
+                                  color: Color(0xFF657BE6),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF4D6),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            '★ ${trainer.rating}',
+                            style: const TextStyle(
+                              color: Color(0xFF9A6700),
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _ProfileMetricGrid(
+                      items: [
+                        _MetricItem(
+                          label: 'Ukupno sesija',
+                          value: '${trainer.sessionCount}',
+                        ),
+                        _MetricItem(
+                          label: 'Grupni treninzi',
+                          value: '${trainer.groupSessionCount}',
+                        ),
+                        _MetricItem(
+                          label: 'Teretane',
+                          value: '${trainer.gymNames.length}',
+                        ),
+                        _MetricItem(
+                          label: 'Gradovi',
+                          value: '${trainer.cityNames.length}',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    _TopCard(
+                      title: 'Dostupnost',
+                      subtitle: 'Sljedeci termin',
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          trainer.nextAvailableLabel,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _TopCard(
+                      title: 'Specijalizacije',
+                      subtitle: 'Tipovi treninga koje trener vodi',
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: trainer.specializations
+                            .map(
+                              (item) => Chip(
+                                label: Text(item),
+                                backgroundColor: const Color(0xFFE8EEFF),
+                                labelStyle: const TextStyle(
+                                  color: Color(0xFF4F63D2),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _TopCard(
+                      title: 'Lokacije',
+                      subtitle: 'Teretane i gradovi',
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            trainer.name,
+                            trainer.gymNames.join(', '),
                             style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w700,
                               color: Color(0xFF1E293B),
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 6),
                           Text(
-                            trainer.headline,
-                            style: const TextStyle(
-                              color: Color(0xFF657BE6),
-                              fontWeight: FontWeight.w700,
-                            ),
+                            trainer.cityNames.join(', '),
+                            style: const TextStyle(color: Color(0xFF64748B)),
                           ),
                         ],
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF4D6),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        '★ ${trainer.rating}',
-                        style: const TextStyle(
-                          color: Color(0xFF9A6700),
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _ProfileMetricGrid(
-                  items: [
-                    _MetricItem(label: 'Ukupno sesija', value: '${trainer.sessionCount}'),
-                    _MetricItem(label: 'Grupni treninzi', value: '${trainer.groupSessionCount}'),
-                    _MetricItem(label: 'Teretane', value: '${trainer.gymNames.length}'),
-                    _MetricItem(label: 'Gradovi', value: '${trainer.cityNames.length}'),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                _TopCard(
-                  title: 'Dostupnost',
-                  subtitle: 'Sljedeci termin',
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      trainer.nextAvailableLabel,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1E293B),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _TopCard(
-                  title: 'Specijalizacije',
-                  subtitle: 'Tipovi treninga koje trener vodi',
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: trainer.specializations
-                        .map(
-                          (item) => Chip(
-                            label: Text(item),
-                            backgroundColor: const Color(0xFFE8EEFF),
-                            labelStyle: const TextStyle(
-                              color: Color(0xFF4F63D2),
-                              fontWeight: FontWeight.w700,
-                            ),
+                    if ((trainer.biography ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      _TopCard(
+                        title: 'Biografija',
+                        subtitle: 'Predstavljenje trenera',
+                        child: Text(
+                          trainer.biography!,
+                          style: const TextStyle(
+                            color: Color(0xFF475569),
+                            height: 1.5,
                           ),
-                        )
-                        .toList(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _TopCard(
-                  title: 'Lokacije',
-                  subtitle: 'Teretane i gradovi',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        trainer.gymNames.join(', '),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1E293B),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        trainer.cityNames.join(', '),
-                        style: const TextStyle(color: Color(0xFF64748B)),
                       ),
                     ],
-                  ),
+                    if ((trainer.experience ?? '').trim().isNotEmpty ||
+                        (trainer.certifications ?? '').trim().isNotEmpty ||
+                        (trainer.availability ?? '').trim().isNotEmpty ||
+                        (trainer.email ?? '').trim().isNotEmpty ||
+                        (trainer.phoneNumber ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      _TopCard(
+                        title: 'Dodatne informacije',
+                        subtitle: 'Iskustvo i kontakt',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if ((trainer.experience ?? '').trim().isNotEmpty)
+                              Text(
+                                'Iskustvo: ${trainer.experience}',
+                                style: const TextStyle(
+                                  color: Color(0xFF475569),
+                                  height: 1.5,
+                                ),
+                              ),
+                            if ((trainer.certifications ?? '')
+                                .trim()
+                                .isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  'Certifikati: ${trainer.certifications}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF475569),
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ),
+                            if ((trainer.availability ?? '').trim().isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  'Dostupnost: ${trainer.availability}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF475569),
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ),
+                            if ((trainer.email ?? '').trim().isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  'Email: ${trainer.email}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF475569),
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ),
+                            if ((trainer.phoneNumber ?? '').trim().isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  'Telefon: ${trainer.phoneNumber}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF475569),
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                if ((trainer.biography ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  _TopCard(
-                    title: 'Biografija',
-                    subtitle: 'Predstavljenje trenera',
-                    child: Text(
-                      trainer.biography!,
-                      style: const TextStyle(color: Color(0xFF475569), height: 1.5),
-                    ),
-                  ),
-                ],
-                if ((trainer.experience ?? '').trim().isNotEmpty ||
-                    (trainer.certifications ?? '').trim().isNotEmpty ||
-                    (trainer.availability ?? '').trim().isNotEmpty ||
-                    (trainer.email ?? '').trim().isNotEmpty ||
-                    (trainer.phoneNumber ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  _TopCard(
-                    title: 'Dodatne informacije',
-                    subtitle: 'Iskustvo i kontakt',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if ((trainer.experience ?? '').trim().isNotEmpty)
-                          Text(
-                            'Iskustvo: ${trainer.experience}',
-                            style: const TextStyle(color: Color(0xFF475569), height: 1.5),
-                          ),
-                        if ((trainer.certifications ?? '').trim().isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text(
-                              'Certifikati: ${trainer.certifications}',
-                              style: const TextStyle(color: Color(0xFF475569), height: 1.5),
-                            ),
-                          ),
-                        if ((trainer.availability ?? '').trim().isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text(
-                              'Dostupnost: ${trainer.availability}',
-                              style: const TextStyle(color: Color(0xFF475569), height: 1.5),
-                            ),
-                          ),
-                        if ((trainer.email ?? '').trim().isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text(
-                              'Email: ${trainer.email}',
-                              style: const TextStyle(color: Color(0xFF475569), height: 1.5),
-                            ),
-                          ),
-                        if ((trainer.phoneNumber ?? '').trim().isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text(
-                              'Telefon: ${trainer.phoneNumber}',
-                              style: const TextStyle(color: Color(0xFF475569), height: 1.5),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
+              ),
             ),
           ),
         );
@@ -4357,15 +4991,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final now = DateTime.now();
     final upcomingGroupSessions = reservedSessions
-        .where((session) => _sessionStartAt(session).isAfter(now.subtract(const Duration(minutes: 1))))
+        .where(
+          (session) => _sessionStartAt(
+            session,
+          ).isAfter(now.subtract(const Duration(minutes: 1))),
+        )
         .toList();
     final reminderSessions = upcomingGroupSessions
-      .where((session) => _sessionStartAt(session).difference(now).inHours <= 48)
-      .take(3)
-      .toList();
+        .where(
+          (session) => _sessionStartAt(session).difference(now).inHours <= 48,
+        )
+        .take(3)
+        .toList();
 
-    String shortDate(String value) => value.length >= 10 ? value.substring(0, 10) : value;
-    String shortTime(String value) => value.length >= 5 ? value.substring(0, 5) : value;
+    String shortDate(String value) =>
+        value.length >= 10 ? value.substring(0, 10) : value;
+    String shortTime(String value) =>
+        value.length >= 5 ? value.substring(0, 5) : value;
     String weekdayLabel(String value) {
       final parsed = DateTime.tryParse(value);
       if (parsed == null) return 'Dan nije poznat';
@@ -4391,9 +5033,21 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Row(
                 children: [
-                  Expanded(child: _SmallMetric(title: 'Planirano', value: '12', subtitle: 'za ovaj mjesec')),
+                  Expanded(
+                    child: _SmallMetric(
+                      title: 'Planirano',
+                      value: '12',
+                      subtitle: 'za ovaj mjesec',
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  Expanded(child: _SmallMetric(title: 'Ostvareno', value: '10', subtitle: 'do sada')),
+                  Expanded(
+                    child: _SmallMetric(
+                      title: 'Ostvareno',
+                      value: '10',
+                      subtitle: 'do sada',
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 14),
@@ -4410,7 +5064,10 @@ class _HomeScreenState extends State<HomeScreen> {
               Text(
                 '83% cilj postignut (10/12) · $daysRemaining dana aktivne članarine',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF7A8598), fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  color: Color(0xFF7A8598),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -4432,7 +5089,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.notifications_active_outlined, color: Color(0xFFB45309)),
+                    const Icon(
+                      Icons.notifications_active_outlined,
+                      color: Color(0xFFB45309),
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
@@ -4452,7 +5112,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 5,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF59E0B),
                         borderRadius: BorderRadius.circular(999),
@@ -4487,17 +5150,21 @@ class _HomeScreenState extends State<HomeScreen> {
             style: TextStyle(color: Color(0xFF8A94A8)),
           )
         else
-          ...upcomingGroupSessions.take(8).map(
-            (session) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _ScheduleCard(
-                title: session.title,
-                schedule: '${weekdayLabel(session.date)}, ${shortDate(session.date)} · ${shortTime(session.startTime)} - ${shortTime(session.endTime)}',
-                details: '${session.gymName} · Trener: ${session.trainerFullName}',
-                tag: session.isGroup ? 'GRUPNI PLAĆENI' : 'LIČNI',
+          ...upcomingGroupSessions
+              .take(8)
+              .map(
+                (session) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _ScheduleCard(
+                    title: session.title,
+                    schedule:
+                        '${weekdayLabel(session.date)}, ${shortDate(session.date)} · ${shortTime(session.startTime)} - ${shortTime(session.endTime)}',
+                    details:
+                        '${session.gymName} · Trener: ${session.trainerFullName}',
+                    tag: session.isGroup ? 'GRUPNI PLAĆENI' : 'LIČNI',
+                  ),
+                ),
               ),
-            ),
-          ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: _openAddTrainingDialog,
@@ -4541,7 +5208,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: training.name,
                 exercises: training.exercises,
                 details: training.details,
-                completedAt: _formatDateTime(training.completedAt ?? training.createdAt),
+                completedAt: _formatDateTime(
+                  training.completedAt ?? training.createdAt,
+                ),
               ),
             ),
           ),
@@ -4579,18 +5248,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final averageWeekly = weeklyVisits.isEmpty
         ? 0
         : (weeklyVisits.values.reduce((a, b) => a + b) / weeklyVisits.length)
-            .round();
+              .round();
     final sortedMeasurements = [..._measurements]
       ..sort((a, b) => a.date.compareTo(b.date));
-    final latestMeasurement =
-        sortedMeasurements.isEmpty ? null : sortedMeasurements.last;
+    final latestMeasurement = sortedMeasurements.isEmpty
+        ? null
+        : sortedMeasurements.last;
     final previousMeasurement = sortedMeasurements.length > 1
         ? sortedMeasurements[sortedMeasurements.length - 2]
         : null;
     final weightDelta =
-        latestMeasurement?.weightKg != null && previousMeasurement?.weightKg != null
-            ? latestMeasurement!.weightKg! - previousMeasurement!.weightKg!
-            : null;
+        latestMeasurement?.weightKg != null &&
+            previousMeasurement?.weightKg != null
+        ? latestMeasurement!.weightKg! - previousMeasurement!.weightKg!
+        : null;
     final latestWeightText = latestMeasurement?.weightKg == null
         ? '-'
         : '${latestMeasurement!.weightKg!.toStringAsFixed(1)} kg';
@@ -4605,15 +5276,23 @@ class _HomeScreenState extends State<HomeScreen> {
     final reservedSessions = mergedGroupSessionsById.values.toList()
       ..sort((a, b) => _sessionStartAt(a).compareTo(_sessionStartAt(b)));
     final upcomingGroupSessions = reservedSessions
-        .where((session) => _sessionStartAt(session).isAfter(now.subtract(const Duration(minutes: 1))))
+        .where(
+          (session) => _sessionStartAt(
+            session,
+          ).isAfter(now.subtract(const Duration(minutes: 1))),
+        )
         .toList();
     final reminderSessions = upcomingGroupSessions
-        .where((session) => _sessionStartAt(session).difference(now).inHours <= 48)
+        .where(
+          (session) => _sessionStartAt(session).difference(now).inHours <= 48,
+        )
         .take(3)
         .toList();
 
-    String shortDate(String value) => value.length >= 10 ? value.substring(0, 10) : value;
-    String shortTime(String value) => value.length >= 5 ? value.substring(0, 5) : value;
+    String shortDate(String value) =>
+        value.length >= 10 ? value.substring(0, 10) : value;
+    String shortTime(String value) =>
+        value.length >= 5 ? value.substring(0, 5) : value;
     String weekdayLabel(String value) {
       final parsed = DateTime.tryParse(value);
       if (parsed == null) return 'Dan nije poznat';
@@ -4629,6 +5308,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return ListView(
+      key: const PageStorageKey('progress-tab-v2'),
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
@@ -4795,19 +5475,21 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    ...sortedMeasurements.reversed.take(4).map(
-                      (measurement) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: _HistoryCard(
-                          title: _monthLabel(
-                            _tryParseDate(measurement.date) ?? now,
+                    ...sortedMeasurements.reversed
+                        .take(4)
+                        .map(
+                          (measurement) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _HistoryCard(
+                              title: _monthLabel(
+                                _tryParseDate(measurement.date) ?? now,
+                              ),
+                              value:
+                                  '${_formatMeasurementValue(measurement.weightKg, suffix: ' kg')} · ${_formatMeasurementValue(measurement.bodyFatPercent, suffix: '%')}',
+                              date: _formatIsoDate(measurement.date),
+                            ),
                           ),
-                          value:
-                              '${_formatMeasurementValue(measurement.weightKg, suffix: ' kg')} · ${_formatMeasurementValue(measurement.bodyFatPercent, suffix: '%')}',
-                          date: _formatIsoDate(measurement.date),
                         ),
-                      ),
-                    ),
                   ],
                 ),
         ),
@@ -4888,18 +5570,21 @@ class _HomeScreenState extends State<HomeScreen> {
             style: TextStyle(color: Color(0xFF8A94A8)),
           )
         else
-          ...upcomingGroupSessions.take(8).map(
-            (session) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _ScheduleCard(
-                title: session.title,
-                schedule:
-                    '${weekdayLabel(session.date)}, ${shortDate(session.date)} · ${shortTime(session.startTime)} - ${shortTime(session.endTime)}',
-                details: '${session.gymName} · Trener: ${session.trainerFullName}',
-                tag: session.isGroup ? 'GRUPNI PLACENI' : 'LICNI',
+          ...upcomingGroupSessions
+              .take(8)
+              .map(
+                (session) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _ScheduleCard(
+                    title: session.title,
+                    schedule:
+                        '${weekdayLabel(session.date)}, ${shortDate(session.date)} · ${shortTime(session.startTime)} - ${shortTime(session.endTime)}',
+                    details:
+                        '${session.gymName} · Trener: ${session.trainerFullName}',
+                    tag: session.isGroup ? 'GRUPNI PLACENI' : 'LICNI',
+                  ),
+                ),
               ),
-            ),
-          ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: _openAddTrainingDialog,
@@ -4961,6 +5646,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final billingPayments = _billingPayments;
 
     return ListView(
+      key: const PageStorageKey('profile-tab'),
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
@@ -4975,23 +5661,49 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Icon(Icons.person, size: 46, color: Color(0xFF5D72E6)),
               ),
               const SizedBox(height: 14),
-              Text(user?.fullName ?? 'Korisnik', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+              Text(
+                user?.fullName ?? 'Korisnik',
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text(user?.email ?? '', style: const TextStyle(color: Color(0xFF7A8598))),
+              Text(
+                user?.email ?? '',
+                style: const TextStyle(color: Color(0xFF7A8598)),
+              ),
               const SizedBox(height: 16),
               Row(
                 children: [
-                  Expanded(child: _ProfileInfoBox(label: 'TERETANA', value: gymName)),
+                  Expanded(
+                    child: _ProfileInfoBox(label: 'TERETANA', value: gymName),
+                  ),
                   const SizedBox(width: 10),
-                  Expanded(child: _ProfileInfoBox(label: 'ČLANARINA', value: membershipRange)),
+                  Expanded(
+                    child: _ProfileInfoBox(
+                      label: 'ČLANARINA',
+                      value: membershipRange,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(child: _ProfileInfoBox(label: 'GRAD', value: user?.cityName ?? '-')),
+                  Expanded(
+                    child: _ProfileInfoBox(
+                      label: 'GRAD',
+                      value: user?.cityName ?? '-',
+                    ),
+                  ),
                   const SizedBox(width: 10),
-                  Expanded(child: _ProfileInfoBox(label: 'TELEFON', value: user?.phoneNumber ?? '-')),
+                  Expanded(
+                    child: _ProfileInfoBox(
+                      label: 'TELEFON',
+                      value: user?.phoneNumber ?? '-',
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 14),
@@ -4999,7 +5711,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: () => _openEditProfileDialog(context.read<AuthProvider>()),
+                      onPressed: () =>
+                          _openEditProfileDialog(context.read<AuthProvider>()),
                       icon: const Icon(Icons.edit),
                       label: const Text('Uredi profil'),
                     ),
@@ -5007,7 +5720,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () => _openChangePasswordDialog(context.read<AuthProvider>()),
+                      onPressed: () => _openChangePasswordDialog(
+                        context.read<AuthProvider>(),
+                      ),
                       icon: const Icon(Icons.lock_outline),
                       label: const Text('Lozinka'),
                     ),
@@ -5056,7 +5771,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.hourglass_top_rounded, size: 18, color: Color(0xFF8D6E00)),
+                const Icon(
+                  Icons.hourglass_top_rounded,
+                  size: 18,
+                  color: Color(0xFF8D6E00),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -5073,7 +5792,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: _resumePendingPayments,
                   style: TextButton.styleFrom(
                     foregroundColor: const Color(0xFF6D4C00),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                   ),
                   child: const Text('Osvježi'),
                 ),
@@ -5098,7 +5820,8 @@ class _HomeScreenState extends State<HomeScreen> {
               subtitle: 'Nema evidentiranih plaćanja',
               child: _emptyStateCard(
                 title: 'Još nema plaćanja',
-                message: 'Kada obavite uplatu ili kupovinu članarine, ovdje će se pojaviti historija.',
+                message:
+                    'Kada obavite uplatu ili kupovinu članarine, ovdje će se pojaviti historija.',
                 icon: Icons.receipt_long_outlined,
                 actionLabel: 'Pregledaj billing',
                 onAction: () => setState(() => _profileSection = 'Billing'),
@@ -5108,31 +5831,41 @@ class _HomeScreenState extends State<HomeScreen> {
             for (var i = 0; i < _recentPayments.length && i < 5; i++) ...[
               _HistoryCard(
                 title: _paymentTypeLabel(_recentPayments[i]['type']),
-                value: '${((_recentPayments[i]['amount'] as num?) ?? 0).toStringAsFixed(0)} ${_recentPayments[i]['currency'] ?? 'KM'}',
+                value:
+                    '${((_recentPayments[i]['amount'] as num?) ?? 0).toStringAsFixed(0)} ${_recentPayments[i]['currency'] ?? 'KM'}',
                 date: _formatIsoDate(_recentPayments[i]['createdAt']),
               ),
-              if (i < 4 && i < _recentPayments.length - 1) const SizedBox(height: 10),
+              if (i < 4 && i < _recentPayments.length - 1)
+                const SizedBox(height: 10),
             ],
           ],
         ] else if (_profileSection == 'Billing') ...[
           _ProfileMetricGrid(
             items: [
-              _MetricItem(label: 'Ukupno uplata', value: '${_billingPayments.length}'),
+              _MetricItem(
+                label: 'Ukupno uplata',
+                value: '${_billingPayments.length}',
+              ),
               _MetricItem(
                 label: 'Ukupno plaćeno',
-                value: '${_billingPayments
-                        .where((p) {
-                          final s = '${p['status']}'.toLowerCase();
-                          return p['status'] == 1 || s == 'succeeded';
-                        })
-                        .fold<double>(0, (sum, p) => sum + (((p['amount'] as num?) ?? 0).toDouble()))
-                        .toStringAsFixed(0)} KM',
+                value:
+                    '${_billingPayments.where((p) {
+                      final s = '${p['status']}'.toLowerCase();
+                      return p['status'] == 1 || s == 'succeeded';
+                    }).fold<double>(0, (sum, p) => sum + (((p['amount'] as num?) ?? 0).toDouble())).toStringAsFixed(0)} KM',
               ),
-              _MetricItem(label: 'Aktivna članarina', value: _activeMembership == null ? 'Ne' : 'Da'),
-              _MetricItem(label: 'U obradi', value: '${_billingPayments.where((p) {
-                final s = '${p['status']}'.toLowerCase();
-                return p['status'] == 0 || s == 'pending';
-              }).length}'),
+              _MetricItem(
+                label: 'Aktivna članarina',
+                value: _activeMembership == null ? 'Ne' : 'Da',
+              ),
+              _MetricItem(
+                label: 'U obradi',
+                value:
+                    '${_billingPayments.where((p) {
+                      final s = '${p['status']}'.toLowerCase();
+                      return p['status'] == 0 || s == 'pending';
+                    }).length}',
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -5149,7 +5882,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ChoiceChip(
                 label: const Text('Članarine'),
                 selected: _billingTypeFilter == 'Članarine',
-                onSelected: (_) => setState(() => _billingTypeFilter = 'Članarine'),
+                onSelected: (_) =>
+                    setState(() => _billingTypeFilter = 'Članarine'),
               ),
               ChoiceChip(
                 label: const Text('Shop'),
@@ -5157,16 +5891,24 @@ class _HomeScreenState extends State<HomeScreen> {
                 onSelected: (_) => setState(() => _billingTypeFilter = 'Shop'),
               ),
               ChoiceChip(
-                label: Text(_billingSortNewestFirst ? 'Najnovije prvo' : 'Najstarije prvo'),
+                label: Text(
+                  _billingSortNewestFirst
+                      ? 'Najnovije prvo'
+                      : 'Najstarije prvo',
+                ),
                 selected: true,
-                onSelected: (_) => setState(() => _billingSortNewestFirst = !_billingSortNewestFirst),
+                onSelected: (_) => setState(
+                  () => _billingSortNewestFirst = !_billingSortNewestFirst,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 12),
           _TopCard(
             title: 'Zadnje transakcije',
-            subtitle: billingPayments.isEmpty ? 'Nema transakcija za odabrani filter' : 'Posljednjih ${billingPayments.length > 3 ? 3 : billingPayments.length}',
+            subtitle: billingPayments.isEmpty
+                ? 'Nema transakcija za odabrani filter'
+                : 'Posljednjih ${billingPayments.length > 3 ? 3 : billingPayments.length}',
             child: billingPayments.isEmpty
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -5181,9 +5923,15 @@ class _HomeScreenState extends State<HomeScreen> {
                         runSpacing: 8,
                         children: [
                           OutlinedButton.icon(
-                            onPressed: () => setState(() => _selectedIndex = _hasGymAccess ? 0 : 1),
+                            onPressed: () => setState(
+                              () => _selectedIndex = _hasGymAccess ? 0 : 1,
+                            ),
                             icon: const Icon(Icons.storefront_outlined),
-                            label: Text(_hasGymAccess ? 'Idi na Home' : 'Pregledaj ponude'),
+                            label: Text(
+                              _hasGymAccess
+                                  ? 'Idi na Home'
+                                  : 'Pregledaj ponude',
+                            ),
                           ),
                           OutlinedButton.icon(
                             onPressed: _loadPayments,
@@ -5197,7 +5945,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (var i = 0; i < billingPayments.length && i < 3; i++) ...[
+                      for (
+                        var i = 0;
+                        i < billingPayments.length && i < 3;
+                        i++
+                      ) ...[
                         _paymentHistoryRow(billingPayments[i]),
                         const SizedBox(height: 8),
                       ],
@@ -5205,7 +5957,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(
-                            onPressed: () => _showAllPaymentsDialog(billingPayments),
+                            onPressed: () =>
+                                _showAllPaymentsDialog(billingPayments),
                             child: const Text('Prikaži sve transakcije'),
                           ),
                         ),
@@ -5213,7 +5966,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(
-                            onPressed: billingPayments.isEmpty ? null : () => _showAllPaymentsDialog(billingPayments),
+                            onPressed: billingPayments.isEmpty
+                                ? null
+                                : () => _showAllPaymentsDialog(billingPayments),
                             child: const Text('Prikaži sve transakcije'),
                           ),
                         ),
@@ -5235,34 +5990,40 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: TextStyle(color: Color(0xFF64748B)),
                   )
                 else ...[
-                  ..._shopCart.take(4).map(
-                    (item) => Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text('• ${item.title} x${item.quantity} - ${(item.price * item.quantity).toStringAsFixed(0)} KM'),
+                  ..._shopCart
+                      .take(4)
+                      .map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '• ${item.title} x${item.quantity} - ${(item.price * item.quantity).toStringAsFixed(0)} KM',
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () => _removeCartItem(item),
+                                icon: const Icon(Icons.delete_outline),
+                                visualDensity: VisualDensity.compact,
+                                tooltip: 'Ukloni artikal',
+                              ),
+                              IconButton(
+                                onPressed: () =>
+                                    _changeCartItemQuantity(item, -1),
+                                icon: const Icon(Icons.remove_circle_outline),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              IconButton(
+                                onPressed: () =>
+                                    _changeCartItemQuantity(item, 1),
+                                icon: const Icon(Icons.add_circle_outline),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ],
                           ),
-                          IconButton(
-                            onPressed: () => _removeCartItem(item),
-                            icon: const Icon(Icons.delete_outline),
-                            visualDensity: VisualDensity.compact,
-                            tooltip: 'Ukloni artikal',
-                          ),
-                          IconButton(
-                            onPressed: () => _changeCartItemQuantity(item, -1),
-                            icon: const Icon(Icons.remove_circle_outline),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          IconButton(
-                            onPressed: () => _changeCartItemQuantity(item, 1),
-                            icon: const Icon(Icons.add_circle_outline),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
                   if (_shopCart.length > 4)
                     Text(
                       '+ još ${_shopCart.length - 4} artikala',
@@ -5292,7 +6053,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ] else ...[
           _emptyStateCard(
             title: 'Badges uskoro stižu',
-            message: 'Ovaj dio je trenutno rezervisan za bedževe i napredak. Sljedeći korak je dodavanje pravog progress tracking-a.',
+            message:
+                'Ovaj dio je trenutno rezervisan za bedževe i napredak. Sljedeći korak je dodavanje pravog progress tracking-a.',
             icon: Icons.emoji_events_outlined,
           ),
         ],
@@ -5322,6 +6084,7 @@ class _HomeScreenState extends State<HomeScreen> {
         : '${_formatDate(_activeMembership!.startDate)} - ${_formatDate(_activeMembership!.endDate)}';
 
     return ListView(
+      key: const PageStorageKey('badges-tab'),
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
@@ -5338,7 +6101,10 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 14),
               Text(
                 user?.fullName ?? 'Korisnik',
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: 4),
               Text(
@@ -5348,9 +6114,16 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 16),
               Row(
                 children: [
-                  Expanded(child: _ProfileInfoBox(label: 'TERETANA', value: gymName)),
+                  Expanded(
+                    child: _ProfileInfoBox(label: 'TERETANA', value: gymName),
+                  ),
                   const SizedBox(width: 10),
-                  Expanded(child: _ProfileInfoBox(label: 'CLANARINA', value: membershipRange)),
+                  Expanded(
+                    child: _ProfileInfoBox(
+                      label: 'CLANARINA',
+                      value: membershipRange,
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -5397,16 +6170,26 @@ class _HomeScreenState extends State<HomeScreen> {
         else if (_badges.isEmpty)
           _emptyStateCard(
             title: 'Jos nema bedzeva',
-            message: 'Bedzevi se automatski dodjeljuju kroz check-in i redovne dolaske.',
+            message:
+                'Bedzevi se automatski dodjeljuju kroz check-in i redovne dolaske.',
             icon: Icons.emoji_events_outlined,
           )
         else ...[
           _ProfileMetricGrid(
             items: [
               _MetricItem(label: 'Ukupno bedzeva', value: '${_badges.length}'),
-              _MetricItem(label: 'Prvi osvojen', value: _formatIsoDate(_badges.last.earnedAt)),
-              _MetricItem(label: 'Zadnji osvojen', value: _formatIsoDate(_badges.first.earnedAt)),
-              _MetricItem(label: 'Check-in', value: '${_checkInHistory.length}'),
+              _MetricItem(
+                label: 'Prvi osvojen',
+                value: _formatIsoDate(_badges.last.earnedAt),
+              ),
+              _MetricItem(
+                label: 'Zadnji osvojen',
+                value: _formatIsoDate(_badges.first.earnedAt),
+              ),
+              _MetricItem(
+                label: 'Check-in',
+                value: '${_checkInHistory.length}',
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -5448,7 +6231,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            badge.description ?? 'Bedz osvojen kroz aktivnost u sistemu.',
+                            badge.description ??
+                                'Bedz osvojen kroz aktivnost u sistemu.',
                             style: const TextStyle(color: Color(0xFF64748B)),
                           ),
                         ],
@@ -5517,10 +6301,7 @@ class _GymStatBox extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            icon,
-            style: const TextStyle(fontSize: 20),
-          ),
+          Text(icon, style: const TextStyle(fontSize: 20)),
           const SizedBox(height: 8),
           Text(
             title,
@@ -5538,7 +6319,9 @@ class _GymStatBox extends StatelessWidget {
                 child: Text(
                   value,
                   style: TextStyle(
-                    color: isWarning ? const Color(0xFFFF6B6B) : const Color(0xFF5D72E6),
+                    color: isWarning
+                        ? const Color(0xFFFF6B6B)
+                        : const Color(0xFF5D72E6),
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
                     height: 1,
@@ -5622,11 +6405,7 @@ class _PremiumQuickTileState extends State<_PremiumQuickTile>
                   color: widget.iconColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  widget.icon,
-                  color: widget.iconColor,
-                  size: 20,
-                ),
+                child: Icon(widget.icon, color: widget.iconColor, size: 20),
               ),
               const SizedBox(height: 10),
               Text(
@@ -5721,10 +6500,7 @@ class _TrainerDirectoryCard extends StatelessWidget {
   final _TrainerDirectoryData trainer;
   final VoidCallback onProfile;
 
-  const _TrainerDirectoryCard({
-    required this.trainer,
-    required this.onProfile,
-  });
+  const _TrainerDirectoryCard({required this.trainer, required this.onProfile});
 
   @override
   Widget build(BuildContext context) {
@@ -5742,7 +6518,11 @@ class _TrainerDirectoryCard extends StatelessWidget {
               const CircleAvatar(
                 radius: 23,
                 backgroundColor: Color(0xFF657BE6),
-                child: Icon(Icons.fitness_center, color: Colors.white, size: 20),
+                child: Icon(
+                  Icons.fitness_center,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -5769,7 +6549,10 @@ class _TrainerDirectoryCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF4D6),
                   borderRadius: BorderRadius.circular(999),
@@ -5858,10 +6641,7 @@ class _TrainerPreviewData {
   final String name;
   final String role;
 
-  const _TrainerPreviewData({
-    required this.name,
-    required this.role,
-  });
+  const _TrainerPreviewData({required this.name, required this.role});
 }
 
 // ignore: unused_element
@@ -5869,10 +6649,7 @@ class _TrainerPreviewCard extends StatelessWidget {
   final String name;
   final String role;
 
-  const _TrainerPreviewCard({
-    required this.name,
-    required this.role,
-  });
+  const _TrainerPreviewCard({required this.name, required this.role});
 
   @override
   Widget build(BuildContext context) {
@@ -6085,7 +6862,11 @@ class _ShopCartItem {
   final double price;
   final int quantity;
 
-  const _ShopCartItem({required this.title, required this.price, this.quantity = 1});
+  const _ShopCartItem({
+    required this.title,
+    required this.price,
+    this.quantity = 1,
+  });
 }
 
 class _ShopProduct {
@@ -6156,7 +6937,9 @@ class _GroupTrainingTile extends StatelessWidget {
                 Text(
                   spotsLabel,
                   style: TextStyle(
-                    color: isReserved ? const Color(0xFF2DBB72) : const Color(0xFF8A94A8),
+                    color: isReserved
+                        ? const Color(0xFF2DBB72)
+                        : const Color(0xFF8A94A8),
                     fontWeight: FontWeight.w600,
                     fontSize: 12,
                   ),
@@ -6167,14 +6950,19 @@ class _GroupTrainingTile extends StatelessWidget {
           FilledButton(
             onPressed: isBusy ? null : onReserveToggle,
             style: FilledButton.styleFrom(
-              backgroundColor: isReserved ? const Color(0xFFEF4444) : const Color(0xFF5D72E6),
+              backgroundColor: isReserved
+                  ? const Color(0xFFEF4444)
+                  : const Color(0xFF5D72E6),
               foregroundColor: Colors.white,
             ),
             child: isBusy
                 ? const SizedBox(
                     width: 16,
                     height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   )
                 : Text(isReserved ? 'Otkaži' : 'Rezerviši'),
           ),
@@ -6215,21 +7003,47 @@ class _GymCard extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: accent.withValues(alpha: 0.8), width: 1.4),
-        boxShadow: const [BoxShadow(color: Color(0x0E000000), blurRadius: 16, offset: Offset(0, 8))],
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0E000000),
+            blurRadius: 16,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Expanded(child: Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
+              Expanded(
+                child: Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
-                  color: status == 'ONLINE' ? const Color(0xFF3BB76A) : const Color(0xFFE76F6F),
+                  color: status == 'ONLINE'
+                      ? const Color(0xFF3BB76A)
+                      : const Color(0xFFE76F6F),
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: Text(status, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
+                child: Text(
+                  status,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
               ),
             ],
           ),
@@ -6242,7 +7056,10 @@ class _GymCard extends StatelessWidget {
               const SizedBox(width: 8),
               Text(rating, style: const TextStyle(fontWeight: FontWeight.w800)),
               const SizedBox(width: 8),
-              Text('($reviews)', style: const TextStyle(color: Color(0xFF8A94A8))),
+              Text(
+                '($reviews)',
+                style: const TextStyle(color: Color(0xFF8A94A8)),
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -6252,12 +7069,21 @@ class _GymCard extends StatelessWidget {
             children: tags
                 .map(
                   (tag) => Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF1F4F8),
                       borderRadius: BorderRadius.circular(999),
                     ),
-                    child: Text(tag, style: const TextStyle(color: Color(0xFF75819A), fontWeight: FontWeight.w600)),
+                    child: Text(
+                      tag,
+                      style: const TextStyle(
+                        color: Color(0xFF75819A),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 )
                 .toList(),
@@ -6274,7 +7100,9 @@ class _GymCard extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: FilledButton(
-                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF657BE6)),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF657BE6),
+                  ),
                   onPressed: onJoin,
                   child: const Text('Učlani se'),
                 ),
@@ -6292,7 +7120,11 @@ class _TopCard extends StatelessWidget {
   final String subtitle;
   final Widget child;
 
-  const _TopCard({required this.title, required this.subtitle, required this.child});
+  const _TopCard({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -6301,12 +7133,25 @@ class _TopCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: const [BoxShadow(color: Color(0x11000000), blurRadius: 14, offset: Offset(0, 6))],
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x11000000),
+            blurRadius: 14,
+            offset: Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: Color(0xFF2A3448))),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 21,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF2A3448),
+            ),
+          ),
           const SizedBox(height: 4),
           Text(subtitle, style: const TextStyle(color: Color(0xFF8A94A8))),
           const SizedBox(height: 14),
@@ -6322,7 +7167,11 @@ class _SmallMetric extends StatelessWidget {
   final String value;
   final String subtitle;
 
-  const _SmallMetric({required this.title, required this.value, required this.subtitle});
+  const _SmallMetric({
+    required this.title,
+    required this.value,
+    required this.subtitle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -6334,10 +7183,28 @@ class _SmallMetric extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Text(title, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF9AA4B2), fontWeight: FontWeight.w700, fontSize: 12)),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF9AA4B2),
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
           const SizedBox(height: 8),
-          Text(value, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xFF657BE6))),
-          Text(subtitle, style: const TextStyle(color: Color(0xFF7A8598), fontSize: 12)),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF657BE6),
+            ),
+          ),
+          Text(
+            subtitle,
+            style: const TextStyle(color: Color(0xFF7A8598), fontSize: 12),
+          ),
         ],
       ),
     );
@@ -6350,7 +7217,12 @@ class _ScheduleCard extends StatelessWidget {
   final String? details;
   final String tag;
 
-  const _ScheduleCard({required this.title, required this.schedule, required this.tag, this.details});
+  const _ScheduleCard({
+    required this.title,
+    required this.schedule,
+    required this.tag,
+    this.details,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -6366,27 +7238,55 @@ class _ScheduleCard extends StatelessWidget {
           Container(
             width: 10,
             height: 56,
-            decoration: BoxDecoration(color: const Color(0xFF657BE6), borderRadius: BorderRadius.circular(999)),
+            decoration: BoxDecoration(
+              color: const Color(0xFF657BE6),
+              borderRadius: BorderRadius.circular(999),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(schedule, style: const TextStyle(color: Color(0xFF7A8598))),
+                Text(
+                  schedule,
+                  style: const TextStyle(color: Color(0xFF7A8598)),
+                ),
                 if (details != null) ...[
                   const SizedBox(height: 3),
-                  Text(details!, style: const TextStyle(color: Color(0xFF51607A), fontWeight: FontWeight.w600)),
+                  Text(
+                    details!,
+                    style: const TextStyle(
+                      color: Color(0xFF51607A),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ],
               ],
             ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: BoxDecoration(color: const Color(0xFFEAF0FF), borderRadius: BorderRadius.circular(999)),
-            child: Text(tag, style: const TextStyle(color: Color(0xFF657BE6), fontWeight: FontWeight.w800, fontSize: 12)),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF0FF),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              tag,
+              style: const TextStyle(
+                color: Color(0xFF657BE6),
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
+            ),
           ),
         ],
       ),
@@ -6421,9 +7321,18 @@ class _CustomTrainingCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          ),
           const SizedBox(height: 4),
-          Text('${exercises.length} vježbi', style: const TextStyle(color: Color(0xFF51607A), fontWeight: FontWeight.w700)),
+          Text(
+            '${exercises.length} vježbi',
+            style: const TextStyle(
+              color: Color(0xFF51607A),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           const SizedBox(height: 6),
           ...exercises.map(
             (exercise) => Padding(
@@ -6442,7 +7351,10 @@ class _CustomTrainingCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   'Dodano: $createdAt',
-                  style: const TextStyle(color: Color(0xFF8A94A8), fontSize: 12),
+                  style: const TextStyle(
+                    color: Color(0xFF8A94A8),
+                    fontSize: 12,
+                  ),
                 ),
               ),
               FilledButton.icon(
@@ -6483,9 +7395,18 @@ class _TrainingHistoryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+          ),
           const SizedBox(height: 4),
-          Text('${exercises.length} vježbi', style: const TextStyle(color: Color(0xFF51607A), fontWeight: FontWeight.w700)),
+          Text(
+            '${exercises.length} vježbi',
+            style: const TextStyle(
+              color: Color(0xFF51607A),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           const SizedBox(height: 6),
           ...exercises.map(
             (exercise) => Padding(
@@ -6528,10 +7449,7 @@ class _CustomTrainingEntry {
     this.completedAt,
   });
 
-  _CustomTrainingEntry copyWith({
-    bool? completed,
-    DateTime? completedAt,
-  }) {
+  _CustomTrainingEntry copyWith({bool? completed, DateTime? completedAt}) {
     return _CustomTrainingEntry(
       id: id,
       name: name,
@@ -6560,10 +7478,7 @@ class _SessionOffer {
   final TrainingSessionModel representative;
   final List<String> weekdays;
 
-  const _SessionOffer({
-    required this.representative,
-    required this.weekdays,
-  });
+  const _SessionOffer({required this.representative, required this.weekdays});
 }
 
 class _ProfileInfoBox extends StatelessWidget {
@@ -6576,11 +7491,21 @@ class _ProfileInfoBox extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: const Color(0xFFF5F7FB), borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F7FB),
+        borderRadius: BorderRadius.circular(14),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Color(0xFF8A94A8), fontSize: 11, fontWeight: FontWeight.w700)),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF8A94A8),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           const SizedBox(height: 4),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
         ],
@@ -6594,7 +7519,11 @@ class _SegmentButton extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  const _SegmentButton({required this.label, required this.selected, required this.onTap});
+  const _SegmentButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -6603,7 +7532,9 @@ class _SegmentButton extends StatelessWidget {
       style: OutlinedButton.styleFrom(
         backgroundColor: selected ? const Color(0xFF657BE6) : Colors.white,
         foregroundColor: selected ? Colors.white : const Color(0xFF657BE6),
-        side: BorderSide(color: selected ? const Color(0xFF657BE6) : const Color(0xFFD9E2F2)),
+        side: BorderSide(
+          color: selected ? const Color(0xFF657BE6) : const Color(0xFFD9E2F2),
+        ),
       ),
       child: Text(label),
     );
@@ -6615,26 +7546,46 @@ class _HistoryCard extends StatelessWidget {
   final String value;
   final String date;
 
-  const _HistoryCard({required this.title, required this.value, required this.date});
+  const _HistoryCard({
+    required this.title,
+    required this.value,
+    required this.date,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(date, style: const TextStyle(color: Color(0xFF8A94A8))),
               ],
             ),
           ),
-          Text(value, style: const TextStyle(color: Color(0xFF657BE6), fontWeight: FontWeight.w800, fontSize: 18)),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Color(0xFF657BE6),
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+            ),
+          ),
         ],
       ),
     );
@@ -6669,13 +7620,31 @@ class _ProfileMetricGrid extends StatelessWidget {
         final item = items[index];
         return Container(
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(item.label, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF8A94A8), fontSize: 12, fontWeight: FontWeight.w700)),
+              Text(
+                item.label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF8A94A8),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(height: 8),
-              Text(item.value, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+              Text(
+                item.value,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                ),
+              ),
             ],
           ),
         );
@@ -6683,4 +7652,3 @@ class _ProfileMetricGrid extends StatelessWidget {
     );
   }
 }
-

@@ -282,14 +282,27 @@ class TrainingSessionService {
 }
 
 class ReferenceService {
+  static List<CityModel>? _citiesCache;
+  static List<TrainingTypeModel>? _trainingTypesCache;
+
   static Future<List<CityModel>> getCities() async {
+    final cached = _citiesCache;
+    if (cached != null) return cached;
+
     final data = await ApiClient.get('/reference/cities') as List;
-    return data.map((e) => CityModel.fromJson(e)).toList();
+    final cities = data.map((e) => CityModel.fromJson(e)).toList();
+    _citiesCache = cities;
+    return cities;
   }
 
   static Future<List<TrainingTypeModel>> getTrainingTypes() async {
+    final cached = _trainingTypesCache;
+    if (cached != null) return cached;
+
     final data = await ApiClient.get('/reference/training-types') as List;
-    return data.map((e) => TrainingTypeModel.fromJson(e)).toList();
+    final trainingTypes = data.map((e) => TrainingTypeModel.fromJson(e)).toList();
+    _trainingTypesCache = trainingTypes;
+    return trainingTypes;
   }
 }
 

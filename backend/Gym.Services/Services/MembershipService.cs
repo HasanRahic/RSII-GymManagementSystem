@@ -15,9 +15,12 @@ public class MembershipService : IMembershipService
 
     public async Task<IEnumerable<MembershipPlanDto>> GetPlansAsync(int? gymId)
     {
-        var query = _context.MembershipPlans.Include(p => p.Gym).AsQueryable();
+        var query = _context.MembershipPlans.AsNoTracking().AsQueryable();
         if (gymId.HasValue) query = query.Where(p => p.GymId == gymId.Value);
-        return (await query.ToListAsync()).Select(ToPlanDto);
+        return await query
+            .Select(p => new MembershipPlanDto(
+                p.Id, p.Name, p.Description, p.DurationDays, p.Price, p.IsActive, p.GymId, p.Gym.Name))
+            .ToListAsync();
     }
 
     public async Task<MembershipPlanDto> CreatePlanAsync(CreateMembershipPlanDto dto)
@@ -53,6 +56,7 @@ public class MembershipService : IMembershipService
     public async Task<IEnumerable<UserMembershipDto>> GetAllMembershipsAsync()
     {
         var memberships = await _context.UserMemberships
+            .AsNoTracking()
             .Include(m => m.MembershipPlan)
             .Include(m => m.Gym)
             .Include(m => m.User)
@@ -66,6 +70,7 @@ public class MembershipService : IMembershipService
         await ExpireEndedMembershipsAsync(userId);
 
         var memberships = await _context.UserMemberships
+            .AsNoTracking()
             .Include(m => m.MembershipPlan)
             .Include(m => m.Gym)
             .Include(m => m.User)
@@ -81,6 +86,7 @@ public class MembershipService : IMembershipService
         await ExpireEndedMembershipsAsync(userId);
 
         var m = await _context.UserMemberships
+            .AsNoTracking()
             .Include(m => m.MembershipPlan)
             .Include(m => m.Gym)
             .Include(m => m.User)

@@ -16,10 +16,7 @@ public class TrainingSessionService : ITrainingSessionService
     public async Task<IEnumerable<TrainingSessionDto>> GetAllAsync(int? gymId, int? trainerId, int? typeId)
     {
         var query = _context.TrainingSessions
-            .Include(s => s.Trainer)
-            .Include(s => s.Gym)
-            .Include(s => s.TrainingType)
-            .Include(s => s.Reservations)
+            .AsNoTracking()
             .Where(s => s.IsActive)
             .AsQueryable();
 
@@ -27,16 +24,32 @@ public class TrainingSessionService : ITrainingSessionService
         if (trainerId.HasValue) query = query.Where(s => s.TrainerId == trainerId.Value);
         if (typeId.HasValue)    query = query.Where(s => s.TrainingTypeId == typeId.Value);
 
-        return (await query.OrderBy(s => s.Date).ThenBy(s => s.StartTime).ToListAsync()).Select(ToDto);
+        return await query
+            .OrderBy(s => s.Date)
+            .ThenBy(s => s.StartTime)
+            .Select(s => new TrainingSessionDto(
+                s.Id, s.Title, s.Description, s.Type, s.Date, s.StartTime, s.EndTime,
+                s.MaxParticipants,
+                s.Reservations.Count(r => r.Status == ReservationStatus.Confirmed),
+                s.Price, s.IsActive,
+                s.TrainerId, $"{s.Trainer.FirstName} {s.Trainer.LastName}",
+                s.GymId, s.Gym.Name, s.TrainingTypeId, s.TrainingType.Name))
+            .ToListAsync();
     }
 
     public async Task<TrainingSessionDto?> GetByIdAsync(int id)
     {
-        var s = await _context.TrainingSessions
-            .Include(s => s.Trainer).Include(s => s.Gym)
-            .Include(s => s.TrainingType).Include(s => s.Reservations)
-            .FirstOrDefaultAsync(s => s.Id == id);
-        return s is null ? null : ToDto(s);
+        return await _context.TrainingSessions
+            .AsNoTracking()
+            .Where(s => s.Id == id)
+            .Select(s => new TrainingSessionDto(
+                s.Id, s.Title, s.Description, s.Type, s.Date, s.StartTime, s.EndTime,
+                s.MaxParticipants,
+                s.Reservations.Count(r => r.Status == ReservationStatus.Confirmed),
+                s.Price, s.IsActive,
+                s.TrainerId, $"{s.Trainer.FirstName} {s.Trainer.LastName}",
+                s.GymId, s.Gym.Name, s.TrainingTypeId, s.TrainingType.Name))
+            .FirstOrDefaultAsync();
     }
 
     public async Task<TrainingSessionDto> CreateAsync(int trainerId, CreateTrainingSessionDto dto)
@@ -118,11 +131,15 @@ public class TrainingSessionService : ITrainingSessionService
     public async Task<IEnumerable<SessionReservationDto>> GetUserReservationsAsync(int userId)
     {
         var list = await _context.SessionReservations
-            .Include(r => r.User).Include(r => r.TrainingSession)
+            .AsNoTracking()
             .Where(r => r.UserId == userId)
             .OrderByDescending(r => r.ReservedAt)
+            .Select(r => new SessionReservationDto(
+                r.Id, r.UserId, $"{r.User.FirstName} {r.User.LastName}",
+                r.TrainingSessionId, r.TrainingSession.Title, r.TrainingSession.Date,
+                r.Status, r.ReservedAt))
             .ToListAsync();
-        return list.Select(ToReservationDto);
+        return list;
     }
 
     public async Task<IEnumerable<TrainingSessionDto>> GetUserPaidGroupScheduleAsync(int userId)
@@ -169,6 +186,7 @@ public class TrainingSessionService : ITrainingSessionService
             .ToHashSet();
 
         var candidateSessions = await _context.TrainingSessions
+            .AsNoTracking()
             .Include(s => s.Trainer)
             .Include(s => s.Gym)
             .Include(s => s.TrainingType)

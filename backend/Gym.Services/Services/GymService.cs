@@ -16,7 +16,7 @@ public class GymService : IGymService
     public async Task<IEnumerable<GymDto>> GetAllAsync(string? search, string? city, GymStatus? status)
     {
         var query = _context.Gyms
-            .Include(g => g.City).ThenInclude(c => c.Country)
+            .AsNoTracking()
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -28,16 +28,24 @@ public class GymService : IGymService
         if (status.HasValue)
             query = query.Where(g => g.Status == status.Value);
 
-        return (await query.ToListAsync()).Select(ToDto);
+        return await query
+            .Select(g => new GymDto(
+                g.Id, g.Name, g.Address, g.Description, g.PhoneNumber, g.Email, g.ImageUrl,
+                g.OpenTime, g.CloseTime, g.Capacity, g.CurrentOccupancy, g.Status,
+                g.Latitude, g.Longitude, g.CityId, g.City.Name, g.City.Country.Name))
+            .ToListAsync();
     }
 
     public async Task<GymDto?> GetByIdAsync(int id)
     {
-        var gym = await _context.Gyms
-            .Include(g => g.City).ThenInclude(c => c.Country)
-            .FirstOrDefaultAsync(g => g.Id == id);
-
-        return gym is null ? null : ToDto(gym);
+        return await _context.Gyms
+            .AsNoTracking()
+            .Where(g => g.Id == id)
+            .Select(g => new GymDto(
+                g.Id, g.Name, g.Address, g.Description, g.PhoneNumber, g.Email, g.ImageUrl,
+                g.OpenTime, g.CloseTime, g.Capacity, g.CurrentOccupancy, g.Status,
+                g.Latitude, g.Longitude, g.CityId, g.City.Name, g.City.Country.Name))
+            .FirstOrDefaultAsync();
     }
 
     public async Task<GymDto> CreateAsync(CreateGymDto dto)
@@ -93,9 +101,4 @@ public class GymService : IGymService
         await _context.SaveChangesAsync();
         return (await GetByIdAsync(id))!;
     }
-
-    private static GymDto ToDto(GymFacility g) => new(
-        g.Id, g.Name, g.Address, g.Description, g.PhoneNumber, g.Email, g.ImageUrl,
-        g.OpenTime, g.CloseTime, g.Capacity, g.CurrentOccupancy, g.Status,
-        g.Latitude, g.Longitude, g.CityId, g.City.Name, g.City.Country.Name);
 }
