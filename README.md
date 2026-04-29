@@ -25,7 +25,7 @@ Seminarski rad iz predmeta Razvoj softvera II. Projekat sadrzi:
 ## Konfiguracija
 
 Po novim pravilima predaje, osjetljiva konfiguracija nije u `appsettings.json`, nego u `.env`.
-Repo sadrzi samo `.env.example`, a stvarne vrijednosti drzis lokalno u `.env`.
+Repo sadrzi samo `.env.example`, a stvarne vrijednosti drze se lokalno u `.env`.
 
 Za docker scenarij:
 
