@@ -11,8 +11,11 @@ public class UserService : IUserService
 
     public UserService(GymDbContext context) => _context = context;
 
-    public async Task<IEnumerable<UserDto>> GetAllAsync(string? search, string? role)
+    public async Task<IEnumerable<UserDto>> GetAllAsync(string? search, string? role, int page = 1, int pageSize = 20)
     {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
         var query = _context.Users
             .Include(u => u.City).ThenInclude(c => c!.Country)
             .Include(u => u.PrimaryGym)
@@ -29,7 +32,12 @@ public class UserService : IUserService
             Enum.TryParse<Core.Enums.UserRole>(role, true, out var roleEnum))
             query = query.Where(u => u.Role == roleEnum);
 
-        return (await query.ToListAsync()).Select(ToDto);
+        return (await query
+            .OrderBy(u => u.FirstName)
+            .ThenBy(u => u.LastName)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync()).Select(ToDto);
     }
 
     public async Task<UserDto?> GetByIdAsync(int id)

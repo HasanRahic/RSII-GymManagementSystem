@@ -1,4 +1,4 @@
-using System.Security.Claims;
+using Gym.Api.Extensions;
 using Gym.Core.Enums;
 using Gym.Services.DTOs;
 using Gym.Services.Interfaces;
@@ -14,8 +14,12 @@ public class UsersController(IUserService userService, IAuthService authService)
 {
     [HttpGet]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> GetAll([FromQuery] string? search, [FromQuery] string? role)
-        => Ok(await userService.GetAllAsync(search, role));
+    public async Task<IActionResult> GetAll(
+        [FromQuery] string? search,
+        [FromQuery] string? role,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+        => Ok(await userService.GetAllAsync(search, role, page, pageSize));
 
     [HttpGet("{id:int}")]
     [Authorize(Roles = "Admin")]
@@ -28,19 +32,18 @@ public class UsersController(IUserService userService, IAuthService authService)
     [HttpGet("me")]
     public async Task<IActionResult> GetMe()
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId))
+        var userId = User.GetUserId();
+        if (!userId.HasValue)
             return Unauthorized();
-        var user = await userService.GetByIdAsync(userId);
+        var user = await userService.GetByIdAsync(userId.Value);
         return user is null ? NotFound() : Ok(user);
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateUserDto dto)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        var role    = User.FindFirstValue(ClaimTypes.Role);
-        if (role != "Admin" && idClaim != id.ToString())
+        var userId = User.GetUserId();
+        if (!User.IsInRole("Admin") && userId != id)
             return Forbid();
 
         var result = await userService.UpdateAsync(id, dto);
@@ -58,11 +61,11 @@ public class UsersController(IUserService userService, IAuthService authService)
     [HttpPost("change-password")]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId))
+        var userId = User.GetUserId();
+        if (!userId.HasValue)
             return Unauthorized();
         var isAdmin = User.IsInRole("Admin");
-        await authService.ChangePasswordAsync(userId, dto, isAdmin);
+        await authService.ChangePasswordAsync(userId.Value, dto, isAdmin);
         return NoContent();
     }
 }

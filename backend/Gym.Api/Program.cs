@@ -1,4 +1,7 @@
 using System.Text;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using Gym.Api.Configuration;
 using Gym.Api.Messaging;
 using Gym.Api.Services;
 using Gym.Infrastructure.Data;
@@ -15,6 +18,7 @@ using Stripe;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddProjectDotEnvConfiguration();
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
@@ -36,6 +40,11 @@ builder.Services.AddScoped<ITrainerApplicationService, TrainerApplicationService
 builder.Services.AddScoped<ITrainingSessionService, TrainingSessionService>();
 builder.Services.AddScoped<IProgressService, ProgressService>();
 builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<IPaymentAppService, PaymentAppService>();
+builder.Services.AddScoped<IStripeWebhookService, StripeWebhookService>();
+builder.Services.AddScoped<IMembershipAccessService, MembershipAccessService>();
+builder.Services.AddScoped<IReferenceService, ReferenceService>();
+builder.Services.AddSingleton<ITokenRevocationService, InMemoryTokenRevocationService>();
 
 // JWT Authentication
 var jwtKey = builder.Configuration["JWT:Key"]
@@ -57,6 +66,26 @@ builder.Services.AddAuthentication(options =>
         ValidIssuer              = builder.Configuration["JWT:Issuer"],
         ValidAudience            = builder.Configuration["JWT:Audience"],
         IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = context =>
+        {
+            var tokenId = context.Principal?.FindFirstValue(JwtRegisteredClaimNames.Jti);
+            if (string.IsNullOrWhiteSpace(tokenId))
+            {
+                context.Fail("Token identifier is missing.");
+                return Task.CompletedTask;
+            }
+
+            var revocationService = context.HttpContext.RequestServices.GetRequiredService<ITokenRevocationService>();
+            if (revocationService.IsRevoked(tokenId))
+            {
+                context.Fail("Token is no longer valid.");
+            }
+
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -111,7 +140,25 @@ builder.Services.AddScoped<IStripePaymentSyncService, StripePaymentSyncService>(
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
-        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+    {
+        var allowedOrigins = builder.Configuration["Cors:AllowedOrigins"]
+            ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            ?? [];
+
+        if (allowedOrigins.Length == 0)
+        {
+            allowedOrigins =
+            [
+                "http://localhost:3000",
+                "http://localhost:5000",
+                "http://localhost:5190",
+                "http://127.0.0.1:5000",
+                "http://127.0.0.1:5190"
+            ];
+        }
+
+        policy.WithOrigins(allowedOrigins).AllowAnyMethod().AllowAnyHeader();
+    });
 });
 
 // Stripe configuration

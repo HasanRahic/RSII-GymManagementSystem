@@ -24,13 +24,16 @@ Seminarski rad iz predmeta Razvoj softvera II. Projekat sadrzi:
 
 ## Konfiguracija
 
-Svi kljucni runtime parametri objedinjeni su u `.env.example`.
+Po novim pravilima predaje, osjetljiva konfiguracija nije u `appsettings.json`, nego u `.env`.
+Repo sadrzi samo `.env.example`, a stvarne vrijednosti drzis lokalno u `.env`.
 
 Za docker scenarij:
 
 ```powershell
 Copy-Item .env.example .env
 ```
+
+Backend i notification servis automatski ucitavaju `.env` iz root foldera projekta.
 
 Flutter klijenti podrzavaju i `--dart-define` konfiguraciju, bez izmjene source koda:
 
@@ -161,9 +164,16 @@ Izvorni markdown za dokumentaciju:
 
 - `resources/docs/recommender-dokumentacija.md`
 
+## Predaja po novim uputama
+
+- Napravi GitHub `Release` za verziju koju predajes.
+- U release priloge dodaj Android APK i Windows build artefakte.
+- `.env` nemoj commitovati; ako profesor trazi, dostavi ga odvojeno kao zasticenu arhivu prema uputama.
+- Na DL postavi link na tacan GitHub release, ne samo na repo.
+
 ## Napomena za evaluaciju
 
-Projekat je pripremljen tako da se moze pokrenuti bez izmjene source koda. Za promjenu API adrese koristi se iskljucivo konfiguracija (`appsettings`, `.env`, `--dart-define`), ne rucna izmjena fajlova.
+Projekat je pripremljen tako da se moze pokrenuti bez izmjene source koda. Za promjenu API adrese koristi se iskljucivo konfiguracija (`.env`, `--dart-define`, docker env varijable), ne rucna izmjena fajlova.
 
 ## Struktura repozitorija
 

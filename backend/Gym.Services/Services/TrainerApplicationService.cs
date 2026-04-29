@@ -13,8 +13,11 @@ public class TrainerApplicationService : ITrainerApplicationService
 
     public TrainerApplicationService(GymDbContext context) => _context = context;
 
-    public async Task<IEnumerable<TrainerApplicationDto>> GetAllAsync(ApplicationStatus? status)
+    public async Task<IEnumerable<TrainerApplicationDto>> GetAllAsync(ApplicationStatus? status, int page = 1, int pageSize = 20)
     {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
         var query = _context.TrainerApplications
             .Include(a => a.User)
             .AsQueryable();
@@ -22,7 +25,11 @@ public class TrainerApplicationService : ITrainerApplicationService
         if (status.HasValue)
             query = query.Where(a => a.Status == status.Value);
 
-        return (await query.OrderByDescending(a => a.SubmittedAt).ToListAsync()).Select(ToDto);
+        return (await query
+            .OrderByDescending(a => a.SubmittedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync()).Select(ToDto);
     }
 
     public async Task<TrainerApplicationDto?> GetByIdAsync(int id)

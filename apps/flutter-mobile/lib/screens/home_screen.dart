@@ -2111,14 +2111,36 @@ class _HomeScreenState extends State<HomeScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+      showDragHandle: false,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final maxHeight = MediaQuery.of(ctx).size.height * 0.82;
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFFF6F8FC),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                Center(
+                  child: Container(
+                    width: 44,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD6DDEA),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 Text(
                   gym.name,
                   style: const TextStyle(
@@ -2271,11 +2293,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   'Napomena: Uplata grupnog treninga omogućava pristup aplikaciji i bez klasične članarine.',
                   style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
                 ),
-              ],
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 

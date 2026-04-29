@@ -1,4 +1,4 @@
-using System.Security.Claims;
+using Gym.Api.Extensions;
 using Gym.Core.Enums;
 using Gym.Services.DTOs;
 using Gym.Services.Interfaces;
@@ -14,8 +14,11 @@ public class TrainerApplicationsController(ITrainerApplicationService trainerApp
 {
     [HttpGet]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> GetAll([FromQuery] ApplicationStatus? status)
-        => Ok(await trainerAppService.GetAllAsync(status));
+    public async Task<IActionResult> GetAll(
+        [FromQuery] ApplicationStatus? status,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+        => Ok(await trainerAppService.GetAllAsync(status, page, pageSize));
 
     [HttpGet("{id:int}")]
     [Authorize(Roles = "Admin")]
@@ -28,11 +31,11 @@ public class TrainerApplicationsController(ITrainerApplicationService trainerApp
     [HttpPost]
     public async Task<IActionResult> Apply([FromBody] CreateTrainerApplicationDto dto)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
         try
         {
-            var result = await trainerAppService.CreateAsync(userId, dto);
+            var result = await trainerAppService.CreateAsync(userId.Value, dto);
             return Ok(result);
         }
         catch (InvalidOperationException ex)
@@ -45,9 +48,9 @@ public class TrainerApplicationsController(ITrainerApplicationService trainerApp
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Review(int id, [FromBody] ReviewApplicationDto dto)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var adminId)) return Unauthorized();
-        var result = await trainerAppService.ReviewAsync(id, adminId, dto);
+        var adminId = User.GetUserId();
+        if (!adminId.HasValue) return Unauthorized();
+        var result = await trainerAppService.ReviewAsync(id, adminId.Value, dto);
         return result is null ? NotFound() : Ok(result);
     }
 }

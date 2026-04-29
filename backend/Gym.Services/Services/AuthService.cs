@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Globalization;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -106,11 +107,12 @@ public class AuthService : IAuthService
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name,           user.Username),
             new(ClaimTypes.Email,          user.Email),
-            new(ClaimTypes.Role,           user.Role.ToString())
+            new(ClaimTypes.Role,           user.Role.ToString()),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N"))
         };
 
         var expires = DateTime.UtcNow.AddMinutes(
-            double.Parse(_config["JWT:ExpiresInMinutes"] ?? "60"));
+            double.Parse(_config["JWT:ExpiresInMinutes"] ?? "60", CultureInfo.InvariantCulture));
 
         var token = new JwtSecurityToken(
             issuer:              _config["JWT:Issuer"],

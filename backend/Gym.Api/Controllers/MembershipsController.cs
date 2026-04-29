@@ -1,12 +1,10 @@
-using System.Security.Claims;
+using Gym.Api.Extensions;
 using Gym.Api.Services;
-using Gym.Infrastructure.Data;
 using Gym.Core.Enums;
 using Gym.Services.DTOs;
 using Gym.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace Gym.Api.Controllers;
 
@@ -16,10 +14,8 @@ namespace Gym.Api.Controllers;
 public class MembershipsController(
     IMembershipService membershipService,
     IStripePaymentSyncService stripePaymentSyncService,
-    GymDbContext context) : ControllerBase
+    IMembershipAccessService membershipAccessService) : ControllerBase
 {
-    // ----- Plans -----
-
     [HttpGet("plans")]
     [AllowAnonymous]
     public async Task<IActionResult> GetPlans([FromQuery] int? gymId)
@@ -38,8 +34,6 @@ public class MembershipsController(
         return result is null ? NotFound() : Ok(result);
     }
 
-    // ----- User memberships -----
-
     [HttpGet]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> GetAll([FromQuery] int? userId)
@@ -50,66 +44,51 @@ public class MembershipsController(
     [HttpGet("my")]
     public async Task<IActionResult> GetMine()
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
-        await stripePaymentSyncService.ReconcileLatestMembershipPaymentsAsync(userId);
-        return Ok(await membershipService.GetUserMembershipsAsync(userId));
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
+
+        await stripePaymentSyncService.ReconcileLatestMembershipPaymentsAsync(userId.Value);
+        return Ok(await membershipService.GetUserMembershipsAsync(userId.Value));
     }
 
     [HttpGet("my/active")]
     public async Task<IActionResult> GetMyActive()
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
-        await stripePaymentSyncService.ReconcileLatestMembershipPaymentsAsync(userId);
-        var membership = await membershipService.GetActiveMembershipAsync(userId);
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
+
+        await stripePaymentSyncService.ReconcileLatestMembershipPaymentsAsync(userId.Value);
+        var membership = await membershipService.GetActiveMembershipAsync(userId.Value);
         return membership is null ? NotFound() : Ok(membership);
     }
 
     [HttpGet("my/access-status")]
     public async Task<IActionResult> GetMyAccessStatus()
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
 
-        await stripePaymentSyncService.ReconcileLatestMembershipPaymentsAsync(userId);
-
-        var now = DateTime.UtcNow;
-        var activeMembership = await membershipService.GetActiveMembershipAsync(userId);
-
-        var latestGroupAccessUntil = await context.Payments
-            .AsNoTracking()
-            .Where(p =>
-                p.UserId == userId &&
-                p.Type == PaymentType.Session &&
-                p.Status == PaymentStatus.Succeeded &&
-                p.SessionAccessUntil.HasValue)
-            .MaxAsync(p => p.SessionAccessUntil);
-
-        var hasGroupAccess = latestGroupAccessUntil.HasValue && latestGroupAccessUntil.Value > now;
-        var hasMembershipAccess = activeMembership is not null;
-
-        return Ok(new AccessStatusDto(
-            hasMembershipAccess,
-            hasGroupAccess,
-            hasMembershipAccess || hasGroupAccess,
-            latestGroupAccessUntil));
+        await stripePaymentSyncService.ReconcileLatestMembershipPaymentsAsync(userId.Value);
+        return Ok(await membershipAccessService.GetAccessStatusAsync(userId.Value));
     }
 
     [HttpPost("renew")]
     public async Task<IActionResult> Renew([FromBody] RenewMembershipDto dto)
     {
-        var result = await membershipService.RenewAsync(dto);
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
+
+        var result = await membershipService.RenewAsync(dto with { UserId = userId.Value });
         return result is null ? BadRequest(new { message = "Plan not found." }) : Ok(result);
     }
 
     [HttpPost("{id:int}/cancel")]
     public async Task<IActionResult> Cancel(int id)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
 
-        var result = await membershipService.CancelMembershipAsync(userId, id);
+        var result = await membershipService.CancelMembershipAsync(userId.Value, id);
         return result is null ? NotFound(new { message = "Članarina nije pronađena." }) : Ok(result);
     }
 }

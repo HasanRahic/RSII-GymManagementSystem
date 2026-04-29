@@ -81,6 +81,11 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    try {
+      await ApiClient.post('/auth/logout', {});
+    } catch (_) {
+      // Best-effort server logout; local cleanup still has to happen.
+    }
     await ApiClient.setToken(null);
     _user = null;
     notifyListeners();

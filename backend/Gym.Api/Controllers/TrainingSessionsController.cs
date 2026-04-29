@@ -1,4 +1,4 @@
-using System.Security.Claims;
+using Gym.Api.Extensions;
 using Gym.Services.DTOs;
 using Gym.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -15,25 +15,29 @@ public class TrainingSessionsController(ITrainingSessionService sessionService) 
     public async Task<IActionResult> GetAll(
         [FromQuery] int? gymId,
         [FromQuery] int? trainerId,
-        [FromQuery] int? trainingTypeId)
-        => Ok(await sessionService.GetAllAsync(gymId, trainerId, trainingTypeId));
+        [FromQuery] int? trainingTypeId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+        => Ok(await sessionService.GetAllAsync(gymId, trainerId, trainingTypeId, page, pageSize));
 
     [HttpGet("recommendations")]
     public async Task<IActionResult> GetRecommendations(
         [FromQuery] string? city,
         [FromQuery] int? trainingTypeId)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
-        return Ok(await sessionService.GetRecommendedGymsAsync(userId, city, trainingTypeId));
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
+        return Ok(await sessionService.GetRecommendedGymsAsync(userId.Value, city, trainingTypeId));
     }
 
     [HttpGet("trainers")]
     public async Task<IActionResult> GetTrainerProfiles(
         [FromQuery] string? city,
         [FromQuery] int? trainingTypeId,
-        [FromQuery] string? search)
-        => Ok(await sessionService.GetTrainerProfilesAsync(city, trainingTypeId, search));
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+        => Ok(await sessionService.GetTrainerProfilesAsync(city, trainingTypeId, search, page, pageSize));
 
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
@@ -46,9 +50,9 @@ public class TrainingSessionsController(ITrainingSessionService sessionService) 
     [Authorize(Roles = "Admin,Trainer")]
     public async Task<IActionResult> Create([FromBody] CreateTrainingSessionDto dto)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var trainerId)) return Unauthorized();
-        var session = await sessionService.CreateAsync(trainerId, dto);
+        var trainerId = User.GetUserId();
+        if (!trainerId.HasValue) return Unauthorized();
+        var session = await sessionService.CreateAsync(trainerId.Value, dto);
         return CreatedAtAction(nameof(GetById), new { id = session.Id }, session);
     }
 
@@ -56,19 +60,19 @@ public class TrainingSessionsController(ITrainingSessionService sessionService) 
     [Authorize(Roles = "Admin,Trainer")]
     public async Task<IActionResult> Delete(int id)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var trainerId)) return Unauthorized();
-        await sessionService.DeleteAsync(id, trainerId);
+        var trainerId = User.GetUserId();
+        if (!trainerId.HasValue) return Unauthorized();
+        await sessionService.DeleteAsync(id, trainerId.Value);
         return NoContent();
     }
 
     [HttpPost("{id:int}/reserve")]
     public async Task<IActionResult> Reserve(int id)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
 
-        var result = await sessionService.ReserveAsync(userId, id);
+        var result = await sessionService.ReserveAsync(userId.Value, id);
         return result is null
             ? BadRequest(new { message = "Session full or already reserved." })
             : Ok(result);
@@ -77,26 +81,26 @@ public class TrainingSessionsController(ITrainingSessionService sessionService) 
     [HttpDelete("{id:int}/reserve")]
     public async Task<IActionResult> CancelReservation(int id)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
 
-        await sessionService.CancelReservationAsync(userId, id);
+        await sessionService.CancelReservationAsync(userId.Value, id);
         return NoContent();
     }
 
     [HttpGet("my-reservations")]
-    public async Task<IActionResult> GetMyReservations()
+    public async Task<IActionResult> GetMyReservations([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
-        return Ok(await sessionService.GetUserReservationsAsync(userId));
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
+        return Ok(await sessionService.GetUserReservationsAsync(userId.Value, page, pageSize));
     }
 
     [HttpGet("my-paid-group-schedule")]
-    public async Task<IActionResult> GetMyPaidGroupSchedule()
+    public async Task<IActionResult> GetMyPaidGroupSchedule([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
-        return Ok(await sessionService.GetUserPaidGroupScheduleAsync(userId));
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
+        return Ok(await sessionService.GetUserPaidGroupScheduleAsync(userId.Value, page, pageSize));
     }
 }

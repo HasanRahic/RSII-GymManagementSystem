@@ -13,8 +13,11 @@ public class TrainingSessionService : ITrainingSessionService
 
     public TrainingSessionService(GymDbContext context) => _context = context;
 
-    public async Task<IEnumerable<TrainingSessionDto>> GetAllAsync(int? gymId, int? trainerId, int? typeId)
+    public async Task<IEnumerable<TrainingSessionDto>> GetAllAsync(int? gymId, int? trainerId, int? typeId, int page = 1, int pageSize = 20)
     {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
         var query = _context.TrainingSessions
             .AsNoTracking()
             .Where(s => s.IsActive)
@@ -27,6 +30,8 @@ public class TrainingSessionService : ITrainingSessionService
         return await query
             .OrderBy(s => s.Date)
             .ThenBy(s => s.StartTime)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(s => new TrainingSessionDto(
                 s.Id, s.Title, s.Description, s.Type, s.Date, s.StartTime, s.EndTime,
                 s.MaxParticipants,
@@ -128,12 +133,17 @@ public class TrainingSessionService : ITrainingSessionService
         await _context.SaveChangesAsync();
     }
 
-    public async Task<IEnumerable<SessionReservationDto>> GetUserReservationsAsync(int userId)
+    public async Task<IEnumerable<SessionReservationDto>> GetUserReservationsAsync(int userId, int page = 1, int pageSize = 20)
     {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
         var list = await _context.SessionReservations
             .AsNoTracking()
             .Where(r => r.UserId == userId)
             .OrderByDescending(r => r.ReservedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(r => new SessionReservationDto(
                 r.Id, r.UserId, $"{r.User.FirstName} {r.User.LastName}",
                 r.TrainingSessionId, r.TrainingSession.Title, r.TrainingSession.Date,
@@ -142,8 +152,11 @@ public class TrainingSessionService : ITrainingSessionService
         return list;
     }
 
-    public async Task<IEnumerable<TrainingSessionDto>> GetUserPaidGroupScheduleAsync(int userId)
+    public async Task<IEnumerable<TrainingSessionDto>> GetUserPaidGroupScheduleAsync(int userId, int page = 1, int pageSize = 20)
     {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
         var now = DateTime.UtcNow;
 
         var paidGroupPrograms = await _context.Payments
@@ -207,7 +220,8 @@ public class TrainingSessionService : ITrainingSessionService
                 s.EndTime)))
             .OrderBy(s => s.Date)
             .ThenBy(s => s.StartTime)
-            .Take(30)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToList();
 
         return sessions.Select(ToDto);
@@ -347,8 +361,13 @@ public class TrainingSessionService : ITrainingSessionService
     public async Task<IEnumerable<TrainerProfileDto>> GetTrainerProfilesAsync(
         string? city,
         int? trainingTypeId,
-        string? search)
+        string? search,
+        int page = 1,
+        int pageSize = 20)
     {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
         var normalizedCity = city?.Trim().ToLowerInvariant();
         var normalizedSearch = search?.Trim().ToLowerInvariant();
         var now = DateTime.UtcNow;
@@ -461,6 +480,8 @@ public class TrainingSessionService : ITrainingSessionService
             .Cast<TrainerProfileDto>()
             .OrderByDescending(x => x.Rating)
             .ThenBy(x => x.FullName)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToList();
 
         return profiles;

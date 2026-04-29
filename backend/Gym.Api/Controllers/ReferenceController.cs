@@ -1,33 +1,21 @@
-using Gym.Infrastructure.Data;
+using Gym.Api.Services;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace Gym.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class ReferenceController(GymDbContext db) : ControllerBase
+public class ReferenceController(IReferenceService referenceService) : ControllerBase
 {
     [HttpGet("countries")]
-    public async Task<IActionResult> GetCountries()
-        => Ok(await db.Countries
-            .Select(c => new { c.Id, c.Name, c.Code })
-            .ToListAsync());
+    public async Task<IActionResult> GetCountries([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+        => Ok(await referenceService.GetCountriesAsync(page, pageSize));
 
     [HttpGet("cities")]
-    public async Task<IActionResult> GetCities([FromQuery] int? countryId)
-    {
-        var query = db.Cities.Include(c => c.Country).AsQueryable();
-        if (countryId.HasValue)
-            query = query.Where(c => c.CountryId == countryId.Value);
-        return Ok(await query
-            .Select(c => new { c.Id, c.Name, c.PostalCode, CountryName = c.Country.Name })
-            .ToListAsync());
-    }
+    public async Task<IActionResult> GetCities([FromQuery] int? countryId, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+        => Ok(await referenceService.GetCitiesAsync(countryId, page, pageSize));
 
     [HttpGet("training-types")]
-    public async Task<IActionResult> GetTrainingTypes()
-        => Ok(await db.TrainingTypes
-            .Select(t => new { t.Id, t.Name, t.Description })
-            .ToListAsync());
+    public async Task<IActionResult> GetTrainingTypes([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+        => Ok(await referenceService.GetTrainingTypesAsync(page, pageSize));
 }

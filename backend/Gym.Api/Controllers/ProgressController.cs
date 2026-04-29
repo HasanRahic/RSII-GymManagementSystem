@@ -1,4 +1,4 @@
-using System.Security.Claims;
+using Gym.Api.Extensions;
 using Gym.Services.DTOs;
 using Gym.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -16,9 +16,9 @@ public class ProgressController(IProgressService progressService) : ControllerBa
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
-        return Ok(await progressService.GetUserMeasurementsAsync(userId, from, to));
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
+        return Ok(await progressService.GetUserMeasurementsAsync(userId.Value, from, to));
     }
 
     [HttpGet("user/{userId:int}")]
@@ -32,26 +32,26 @@ public class ProgressController(IProgressService progressService) : ControllerBa
     [HttpPost]
     public async Task<IActionResult> AddMeasurement([FromBody] CreateProgressMeasurementDto dto)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
-        return Ok(await progressService.AddMeasurementAsync(userId, dto));
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
+        return Ok(await progressService.AddMeasurementAsync(userId.Value, dto));
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> DeleteMeasurement(int id)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
-        await progressService.DeleteMeasurementAsync(userId, id);
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
+        await progressService.DeleteMeasurementAsync(userId.Value, id);
         return NoContent();
     }
 
     [HttpGet("badges")]
     public async Task<IActionResult> GetMyBadges()
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
-        return Ok(await progressService.GetUserBadgesAsync(userId));
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
+        return Ok(await progressService.GetUserBadgesAsync(userId.Value));
     }
 
     [HttpGet("badges/user/{userId:int}")]

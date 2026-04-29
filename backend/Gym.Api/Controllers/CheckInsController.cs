@@ -1,4 +1,4 @@
-using System.Security.Claims;
+using Gym.Api.Extensions;
 using Gym.Services.DTOs;
 using Gym.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -14,9 +14,9 @@ public class CheckInsController(ICheckInService checkInService) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CheckIn([FromBody] CheckInRequestDto dto)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
-        var result = await checkInService.CheckInAsync(userId, dto);
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
+        var result = await checkInService.CheckInAsync(userId.Value, dto);
         return result is null
             ? BadRequest(new { message = "Already checked in or gym not found." })
             : Ok(result);
@@ -25,9 +25,9 @@ public class CheckInsController(ICheckInService checkInService) : ControllerBase
     [HttpPost("checkout")]
     public async Task<IActionResult> CheckOut([FromBody] CheckOutRequestDto dto)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
-        var result = await checkInService.CheckOutAsync(userId, dto);
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
+        var result = await checkInService.CheckOutAsync(userId.Value, dto);
         return result is null ? NotFound() : Ok(result);
     }
 
@@ -36,9 +36,9 @@ public class CheckInsController(ICheckInService checkInService) : ControllerBase
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to)
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(idClaim, out var userId)) return Unauthorized();
-        return Ok(await checkInService.GetUserHistoryAsync(userId, from, to));
+        var userId = User.GetUserId();
+        if (!userId.HasValue) return Unauthorized();
+        return Ok(await checkInService.GetUserHistoryAsync(userId.Value, from, to));
     }
 
     [HttpGet("gym/{gymId:int}")]
