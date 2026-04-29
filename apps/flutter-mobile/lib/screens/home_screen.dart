@@ -1527,8 +1527,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final launched = await Navigator.push<bool>(
       context,
       PageRouteBuilder<bool>(
-        transitionDuration: const Duration(milliseconds: 160),
-        reverseTransitionDuration: const Duration(milliseconds: 140),
+        transitionDuration: const Duration(milliseconds: 90),
+        reverseTransitionDuration: const Duration(milliseconds: 80),
         pageBuilder: (context, animation, secondaryAnimation) =>
             StripeCheckoutScreen(checkoutUrl: sessionUrl),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {

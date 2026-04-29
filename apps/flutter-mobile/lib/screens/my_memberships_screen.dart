@@ -138,8 +138,18 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
     if (!mounted) return false;
     final launched = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(
-        builder: (_) => StripeCheckoutScreen(checkoutUrl: sessionUrl),
+      PageRouteBuilder<bool>(
+        transitionDuration: const Duration(milliseconds: 90),
+        reverseTransitionDuration: const Duration(milliseconds: 80),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            StripeCheckoutScreen(checkoutUrl: sessionUrl),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+          return FadeTransition(opacity: curved, child: child);
+        },
       ),
     );
     return launched ?? false;

@@ -157,6 +157,117 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+const string CheckoutPageStyles = """
+<style>
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f4f7fb;
+    color: #1f2937;
+}
+.wrap {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+.card {
+    width: 100%;
+    max-width: 520px;
+    background: #ffffff;
+    border-radius: 18px;
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+    padding: 28px;
+}
+.badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 14px;
+}
+.badge.ok {
+    background: #dcfce7;
+    color: #166534;
+}
+.badge.warn {
+    background: #fef3c7;
+    color: #92400e;
+}
+h1 {
+    margin: 0 0 10px;
+    font-size: 28px;
+}
+p {
+    margin: 0 0 12px;
+    line-height: 1.5;
+}
+.muted {
+    color: #64748b;
+    font-size: 14px;
+}
+</style>
+""";
+
+app.MapGet("/checkout/success", (HttpContext httpContext) =>
+{
+    var sessionId = httpContext.Request.Query["session_id"].ToString();
+    var encodedSessionId = System.Net.WebUtility.HtmlEncode(sessionId);
+    var html = $"""
+<!DOCTYPE html>
+<html lang="bs">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Uplata uspješna</title>
+  {CheckoutPageStyles}
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="badge ok">UPLATA USPJEŠNA</div>
+      <h1>Stripe uplata je završena.</h1>
+      <p>Možete se vratiti u mobilnu aplikaciju. Status uplate će se automatski osvježiti.</p>
+      <p class="muted">Ako se status ne prikaže odmah, otvorite aplikaciju ponovo i sačekajte nekoliko sekundi.</p>
+      {(string.IsNullOrWhiteSpace(encodedSessionId) ? "" : $"<p class=\"muted\">Session: {encodedSessionId}</p>")}
+    </div>
+  </div>
+</body>
+</html>
+""";
+
+    return Results.Content(html, "text/html; charset=utf-8");
+});
+
+app.MapGet("/checkout/cancel", () =>
+{
+    var html = $"""
+<!DOCTYPE html>
+<html lang="bs">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Uplata otkazana</title>
+  {CheckoutPageStyles}
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="badge warn">UPLATA OTKAZANA</div>
+      <h1>Plaćanje nije dovršeno.</h1>
+      <p>Možete se vratiti u mobilnu aplikaciju i pokušati ponovo kada budete spremni.</p>
+      <p class="muted">Ako ste zatvorili Stripe checkout namjerno, nije potrebna dodatna akcija.</p>
+    </div>
+  </div>
+</body>
+</html>
+""";
+
+    return Results.Content(html, "text/html; charset=utf-8");
+});
+
 app.MapGet("/health", async (GymDbContext db) =>
 {
     var databaseAvailable = await db.Database.CanConnectAsync();

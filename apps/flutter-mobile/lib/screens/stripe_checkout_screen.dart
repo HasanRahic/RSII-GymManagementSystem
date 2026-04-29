@@ -17,7 +17,8 @@ class _StripeCheckoutScreenState extends State<StripeCheckoutScreen> {
   bool _loading = true;
   String? _errorMessage;
   Timer? _loadingWatchdog;
-  bool _checkoutStarted = false;
+  late final Uri _checkoutUri;
+  int _loadingStage = 0;
 
   bool _isTerminalCheckoutUrl(String url) {
     return url.contains('/checkout/success') || url.contains('/checkout/cancel');
@@ -27,14 +28,15 @@ class _StripeCheckoutScreenState extends State<StripeCheckoutScreen> {
     setState(() {
       _loading = true;
       _errorMessage = null;
+      _loadingStage = 0;
     });
     _startLoadingWatchdog();
-    await _controller.loadRequest(Uri.parse(widget.checkoutUrl));
+    await _controller.loadRequest(_checkoutUri);
   }
 
   void _startLoadingWatchdog() {
     _loadingWatchdog?.cancel();
-    _loadingWatchdog = Timer(const Duration(seconds: 15), () {
+    _loadingWatchdog = Timer(const Duration(seconds: 25), () {
       if (!mounted || !_loading) return;
       setState(() {
         _loading = false;
@@ -51,6 +53,7 @@ class _StripeCheckoutScreenState extends State<StripeCheckoutScreen> {
   @override
   void initState() {
     super.initState();
+    _checkoutUri = Uri.parse(widget.checkoutUrl);
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.white)
@@ -65,16 +68,31 @@ class _StripeCheckoutScreenState extends State<StripeCheckoutScreen> {
             }
             return NavigationDecision.navigate;
           },
-          onPageStarted: (_) {
-            if (mounted && !_loading) {
-              setState(() => _loading = true);
-            }
+          onPageStarted: (url) {
+            if (!mounted) return;
+            setState(() {
+              _loading = true;
+              _errorMessage = null;
+              _loadingStage = url.contains('stripe') ? 1 : 2;
+            });
             _startLoadingWatchdog();
+          },
+          onProgress: (progress) {
+            if (!mounted) return;
+            if (progress >= 20 && _loadingStage < 1) {
+              setState(() => _loadingStage = 1);
+            }
+            if (progress >= 65 && _loadingStage < 2) {
+              setState(() => _loadingStage = 2);
+            }
           },
           onPageFinished: (_) {
             _stopLoadingWatchdog();
             if (mounted && _loading) {
-              setState(() => _loading = false);
+              setState(() {
+                _loading = false;
+                _loadingStage = 3;
+              });
             }
           },
           onWebResourceError: (error) {
@@ -90,18 +108,14 @@ class _StripeCheckoutScreenState extends State<StripeCheckoutScreen> {
             _stopLoadingWatchdog();
             setState(() {
               _loading = false;
+              _loadingStage = 0;
               _errorMessage = 'Stripe checkout nije uspio da se učita (${error.errorCode}).';
             });
           },
         ),
       );
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _checkoutStarted) return;
-      _checkoutStarted = true;
-      _startLoadingWatchdog();
-      _controller.loadRequest(Uri.parse(widget.checkoutUrl));
-    });
+    _startLoadingWatchdog();
+    unawaited(_controller.loadRequest(_checkoutUri));
   }
 
   @override
@@ -132,8 +146,37 @@ class _StripeCheckoutScreenState extends State<StripeCheckoutScreen> {
         children: [
           WebViewWidget(controller: _controller),
           if (_loading)
-            const Center(
-              child: CircularProgressIndicator(),
+            Container(
+              color: Colors.white,
+              alignment: Alignment.center,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 34,
+                      height: 34,
+                      child: CircularProgressIndicator(strokeWidth: 3),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      switch (_loadingStage) {
+                        0 => 'Pripremam Stripe checkout...',
+                        1 => 'Povezujem se na Stripe...',
+                        2 => 'Ucitavam sigurnu stranicu za placanje...',
+                        _ => 'Otvaram checkout...',
+                      },
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           if (_errorMessage != null)
             Center(
