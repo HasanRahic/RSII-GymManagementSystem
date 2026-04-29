@@ -40,9 +40,13 @@ jobs:
           channel: stable
 
       - name: Get dependencies
-        working-directory: flutter-mobile
+        working-directory: apps/flutter-mobile
         run: flutter pub get
 
       - name: Analyze app
-        working-directory: flutter-mobile
+        working-directory: apps/flutter-mobile
         run: flutter analyze
+
+      - name: Test app
+        working-directory: apps/flutter-mobile
+        run: flutter test
