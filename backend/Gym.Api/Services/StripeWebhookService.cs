@@ -11,6 +11,8 @@ namespace Gym.Api.Services;
 public sealed class StripeWebhookService(
     GymDbContext context,
     IMembershipService membershipService,
+    INotificationService notificationService,
+    Gym.Api.Messaging.INotificationPublisher notificationPublisher,
     ILogger<StripeWebhookService> logger,
     IConfiguration configuration) : IStripeWebhookService
 {
@@ -80,6 +82,7 @@ public sealed class StripeWebhookService(
         ApplySessionAccessWindow(payment, session.Metadata);
 
         await context.SaveChangesAsync();
+        await NotifyPaymentOutcomeAsync(payment, succeeded: true);
     }
 
     private async Task HandlePaymentIntentSucceededAsync(Event stripeEvent)
@@ -111,6 +114,7 @@ public sealed class StripeWebhookService(
         ApplySessionAccessWindow(payment, paymentIntent.Metadata);
 
         await context.SaveChangesAsync();
+        await NotifyPaymentOutcomeAsync(payment, succeeded: true);
     }
 
     private async Task HandlePaymentIntentFailedAsync(Event stripeEvent)
@@ -138,6 +142,7 @@ public sealed class StripeWebhookService(
         payment.Status = PaymentStatus.Failed;
 
         await context.SaveChangesAsync();
+        await NotifyPaymentOutcomeAsync(payment, succeeded: false);
     }
 
     private async Task<Payment?> FindPaymentAsync(string? stripeSessionId, string? stripePaymentIntentId, IDictionary<string, string>? metadata)
@@ -282,5 +287,35 @@ public sealed class StripeWebhookService(
 
         var start = payment.CompletedAt ?? DateTime.UtcNow;
         payment.SessionAccessUntil = start.AddDays(durationDays.Value);
+    }
+
+    private async Task NotifyPaymentOutcomeAsync(Payment payment, bool succeeded)
+    {
+        var title = succeeded ? "Uplata uspjesna" : "Uplata nije uspjela";
+        var message = succeeded
+            ? $"Uplata #{payment.Id} je uspjesno evidentirana."
+            : $"Uplata #{payment.Id} nije uspjela. Mozete pokusati ponovo.";
+
+        await notificationService.CreateAsync(new CreateNotificationDto(
+            payment.UserId,
+            title,
+            message,
+            succeeded ? "PaymentSucceeded" : "PaymentFailed",
+            "Payment",
+            payment.Id));
+
+        var user = await context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == payment.UserId)
+            .Select(u => new { u.Email, FullName = u.FirstName + " " + u.LastName })
+            .FirstOrDefaultAsync();
+
+        if (user is null || string.IsNullOrWhiteSpace(user.Email))
+            return;
+
+        await notificationPublisher.PublishAsync(new Gym.Api.Messaging.NotificationMessage(
+            user.Email,
+            title,
+            $"Pozdrav {user.FullName},\n\n{message}"));
     }
 }

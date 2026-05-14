@@ -22,6 +22,7 @@ public class GymDbContext : DbContext
     public DbSet<Badge> Badges => Set<Badge>();
     public DbSet<UserBadge> UserBadges => Set<UserBadge>();
     public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -142,6 +143,21 @@ public class GymDbContext : DbContext
             e.Property(p => p.Amount).HasPrecision(10, 2);
             e.Property(p => p.Type).HasConversion<string>();
             e.Property(p => p.Status).HasConversion<string>();
+        });
+
+        // UserNotification
+        modelBuilder.Entity<UserNotification>(e =>
+        {
+            e.Property(n => n.Title).HasMaxLength(200);
+            e.Property(n => n.Type).HasMaxLength(100);
+            e.Property(n => n.RelatedEntityType).HasMaxLength(100);
+
+            e.HasOne(n => n.User)
+             .WithMany(u => u.Notifications)
+             .HasForeignKey(n => n.UserId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasIndex(n => new { n.UserId, n.IsRead, n.CreatedAt });
         });
 
         // Badge

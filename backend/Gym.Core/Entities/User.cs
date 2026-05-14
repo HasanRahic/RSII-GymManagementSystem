@@ -32,4 +32,5 @@ public class User
     public ICollection<ProgressMeasurement> ProgressMeasurements { get; set; } = new List<ProgressMeasurement>();
     public ICollection<UserBadge> UserBadges { get; set; } = new List<UserBadge>();
     public ICollection<Payment> Payments { get; set; } = new List<Payment>();
+    public ICollection<UserNotification> Notifications { get; set; } = new List<UserNotification>();
 }

@@ -10,8 +10,13 @@ namespace Gym.Services.Services;
 public class TrainingSessionService : ITrainingSessionService
 {
     private readonly GymDbContext _context;
+    private readonly INotificationService _notificationService;
 
-    public TrainingSessionService(GymDbContext context) => _context = context;
+    public TrainingSessionService(GymDbContext context, INotificationService notificationService)
+    {
+        _context = context;
+        _notificationService = notificationService;
+    }
 
     public async Task<IEnumerable<TrainingSessionDto>> GetAllAsync(int? gymId, int? trainerId, int? typeId, int page = 1, int pageSize = 20)
     {
@@ -139,6 +144,15 @@ public class TrainingSessionService : ITrainingSessionService
         ApplyReservationTransition(reservation, ReservationStatus.Confirmed);
         _context.SessionReservations.Add(reservation);
         await _context.SaveChangesAsync();
+
+        await _notificationService.CreateAsync(new CreateNotificationDto(
+            userId,
+            "Rezervacija potvrdjena",
+            $"Uspjesno ste rezervisali termin '{session.Title}' za {session.Date:dd.MM.yyyy}.",
+            "TrainingSessionReservation",
+            "TrainingSession",
+            sessionId));
+
         return await LoadReservationDto(reservation.Id);
     }
 
@@ -157,6 +171,14 @@ public class TrainingSessionService : ITrainingSessionService
 
         ApplyReservationTransition(reservation, ReservationStatus.Cancelled);
         await _context.SaveChangesAsync();
+
+        await _notificationService.CreateAsync(new CreateNotificationDto(
+            userId,
+            "Rezervacija otkazana",
+            $"Rezervacija za termin '{reservation.TrainingSession.Title}' je uspjesno otkazana.",
+            "TrainingSessionReservationCancelled",
+            "TrainingSession",
+            sessionId));
     }
 
     public async Task<IEnumerable<SessionReservationDto>> GetUserReservationsAsync(int userId, int page = 1, int pageSize = 20)

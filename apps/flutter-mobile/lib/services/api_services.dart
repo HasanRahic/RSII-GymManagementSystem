@@ -306,6 +306,27 @@ class ReferenceService {
   }
 }
 
+class NotificationApiService {
+  static Future<List<NotificationModel>> getMyNotifications({
+    bool unreadOnly = false,
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    final data = await ApiClient.get(
+      '/notifications/my?unreadOnly=$unreadOnly&page=$page&pageSize=$pageSize',
+    ) as List;
+
+    return data
+        .map((e) => NotificationModel.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  static Future<NotificationModel> markAsRead(int notificationId) async {
+    final data = await ApiClient.post('/notifications/$notificationId/read', {});
+    return NotificationModel.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+}
+
 class CheckInService {
   static Future<CheckInModel> checkIn(int gymId) async {
     final data = await ApiClient.post('/checkins', {'gymId': gymId});

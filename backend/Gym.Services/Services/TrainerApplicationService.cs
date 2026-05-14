@@ -10,8 +10,13 @@ namespace Gym.Services.Services;
 public class TrainerApplicationService : ITrainerApplicationService
 {
     private readonly GymDbContext _context;
+    private readonly INotificationService _notificationService;
 
-    public TrainerApplicationService(GymDbContext context) => _context = context;
+    public TrainerApplicationService(GymDbContext context, INotificationService notificationService)
+    {
+        _context = context;
+        _notificationService = notificationService;
+    }
 
     public async Task<IEnumerable<TrainerApplicationDto>> GetAllAsync(ApplicationStatus? status, int page = 1, int pageSize = 20)
     {
@@ -94,6 +99,17 @@ public class TrainerApplicationService : ITrainerApplicationService
             application.User.Role = UserRole.Trainer;
 
         await _context.SaveChangesAsync();
+
+        await _notificationService.CreateAsync(new CreateNotificationDto(
+            application.UserId,
+            dto.Status == ApplicationStatus.Approved ? "Trainer zahtjev odobren" : "Trainer zahtjev odbijen",
+            dto.Status == ApplicationStatus.Approved
+                ? "Vas zahtjev za trenera je odobren. Sada mozete koristiti trener funkcionalnosti."
+                : $"Vas zahtjev za trenera je odbijen. {(application.AdminNote ?? "Provjerite detalje kod administratora.")}",
+            "TrainerApplication",
+            "TrainerApplication",
+            application.Id));
+
         return ToDto(application);
     }
 
