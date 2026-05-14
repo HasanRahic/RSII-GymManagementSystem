@@ -1,13 +1,13 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Globalization;
 using System.Security.Claims;
-using System.Security.Cryptography;
 using System.Text;
 using Gym.Core.Entities;
 using Gym.Core.Enums;
 using Gym.Infrastructure.Data;
 using Gym.Services.DTOs;
 using Gym.Services.Interfaces;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
@@ -16,6 +16,8 @@ namespace Gym.Services.Services;
 
 public class AuthService : IAuthService
 {
+    private static readonly PasswordHasher<User> PasswordHasher = new();
+
     private readonly GymDbContext _context;
     private readonly IConfiguration _config;
 
@@ -28,25 +30,25 @@ public class AuthService : IAuthService
     public async Task<AuthResponseDto> RegisterAsync(RegisterDto dto)
     {
         if (await _context.Users.AnyAsync(u => u.Email == dto.Email))
-            throw new InvalidOperationException("Email je već zauzet.");
+            throw new InvalidOperationException("Email je vec zauzet.");
 
         if (await _context.Users.AnyAsync(u => u.Username == dto.Username))
-            throw new InvalidOperationException("Korisničko ime je već zauzeto.");
+            throw new InvalidOperationException("Korisnicko ime je vec zauzeto.");
 
-        using var hmac = new HMACSHA512();
         var user = new User
         {
-            FirstName    = dto.FirstName,
-            LastName     = dto.LastName,
-            Username     = dto.Username,
-            Email        = dto.Email,
-            PhoneNumber  = dto.PhoneNumber,
-            DateOfBirth  = dto.DateOfBirth,
-            CityId       = dto.CityId,
-            Role         = UserRole.Member,
-            PasswordSalt = hmac.Key,
-            PasswordHash = hmac.ComputeHash(Encoding.UTF8.GetBytes(dto.Password))
+            FirstName = dto.FirstName,
+            LastName = dto.LastName,
+            Username = dto.Username,
+            Email = dto.Email,
+            PhoneNumber = dto.PhoneNumber,
+            DateOfBirth = dto.DateOfBirth,
+            CityId = dto.CityId,
+            Role = UserRole.Member,
+            PasswordSalt = Array.Empty<byte>()
         };
+
+        user.PasswordHash = EncodePasswordHash(PasswordHasher.HashPassword(user, dto.Password));
 
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
@@ -61,13 +63,10 @@ public class AuthService : IAuthService
             .FirstOrDefaultAsync(u => u.Username == dto.Username && u.IsActive);
 
         if (user is null)
-            throw new UnauthorizedAccessException("Neispravno korisničko ime ili lozinka.");
+            throw new UnauthorizedAccessException("Neispravno korisnicko ime ili lozinka.");
 
-        using var hmac = new HMACSHA512(user.PasswordSalt);
-        var computed = hmac.ComputeHash(Encoding.UTF8.GetBytes(dto.Password));
-
-        if (!computed.SequenceEqual(user.PasswordHash))
-            throw new UnauthorizedAccessException("Neispravno korisničko ime ili lozinka.");
+        if (!await VerifyPasswordAsync(user, dto.Password))
+            throw new UnauthorizedAccessException("Neispravno korisnicko ime ili lozinka.");
 
         return new AuthResponseDto(user.Id, user.FirstName, user.LastName,
             user.Username, user.Email, user.Role, GenerateToken(user));
@@ -79,35 +78,93 @@ public class AuthService : IAuthService
             throw new InvalidOperationException("Lozinke se ne podudaraju.");
 
         var user = await _context.Users.FindAsync(userId)
-            ?? throw new KeyNotFoundException("Korisnik nije pronađen.");
+            ?? throw new KeyNotFoundException("Korisnik nije pronadjen.");
 
         if (!isAdmin)
         {
             if (string.IsNullOrEmpty(dto.OldPassword))
                 throw new InvalidOperationException("Stara lozinka je obavezna.");
 
-            using var hmacCheck = new HMACSHA512(user.PasswordSalt);
-            var computed = hmacCheck.ComputeHash(Encoding.UTF8.GetBytes(dto.OldPassword));
-            if (!computed.SequenceEqual(user.PasswordHash))
+            if (!await VerifyPasswordAsync(user, dto.OldPassword))
                 throw new UnauthorizedAccessException("Stara lozinka nije ispravna.");
         }
 
-        using var hmac = new HMACSHA512();
-        user.PasswordSalt = hmac.Key;
-        user.PasswordHash = hmac.ComputeHash(Encoding.UTF8.GetBytes(dto.NewPassword));
+        user.PasswordHash = EncodePasswordHash(PasswordHasher.HashPassword(user, dto.NewPassword));
+        user.PasswordSalt = Array.Empty<byte>();
         await _context.SaveChangesAsync();
     }
 
+    private async Task<bool> VerifyPasswordAsync(User user, string password)
+    {
+        if (IsIdentityPasswordHash(user))
+        {
+            var hashed = DecodePasswordHash(user.PasswordHash);
+            var verification = PasswordHasher.VerifyHashedPassword(user, hashed, password);
+            return verification switch
+            {
+                PasswordVerificationResult.Success => true,
+                PasswordVerificationResult.SuccessRehashNeeded => await RehashPasswordAsync(user, password),
+                _ => false
+            };
+        }
+
+        if (!VerifyLegacyPassword(user, password))
+            return false;
+
+        await RehashPasswordAsync(user, password);
+        return true;
+    }
+
+    private async Task<bool> RehashPasswordAsync(User user, string password)
+    {
+        user.PasswordHash = EncodePasswordHash(PasswordHasher.HashPassword(user, password));
+        user.PasswordSalt = Array.Empty<byte>();
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    private static bool VerifyLegacyPassword(User user, string password)
+    {
+        if (user.PasswordSalt is null || user.PasswordSalt.Length == 0)
+            return false;
+
+        using var hmac = new System.Security.Cryptography.HMACSHA512(user.PasswordSalt);
+        var computed = hmac.ComputeHash(Encoding.UTF8.GetBytes(password));
+        return computed.SequenceEqual(user.PasswordHash);
+    }
+
+    private static bool IsIdentityPasswordHash(User user)
+    {
+        if (user.PasswordHash is null || user.PasswordHash.Length == 0)
+            return false;
+
+        try
+        {
+            var value = DecodePasswordHash(user.PasswordHash);
+            return value.StartsWith("AQAAAA", StringComparison.Ordinal);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static byte[] EncodePasswordHash(string hash)
+        => Encoding.UTF8.GetBytes(hash);
+
+    private static string DecodePasswordHash(byte[] hash)
+        => Encoding.UTF8.GetString(hash);
+
     private string GenerateToken(User user)
     {
-        var key    = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["JWT:Key"]!));
-        var creds  = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["JWT:Key"]!));
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Name,           user.Username),
-            new(ClaimTypes.Email,          user.Email),
-            new(ClaimTypes.Role,           user.Role.ToString()),
+            new(ClaimTypes.Name, user.Username),
+            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.Role, user.Role.ToString()),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N"))
         };
 
@@ -115,11 +172,11 @@ public class AuthService : IAuthService
             double.Parse(_config["JWT:ExpiresInMinutes"] ?? "60", CultureInfo.InvariantCulture));
 
         var token = new JwtSecurityToken(
-            issuer:              _config["JWT:Issuer"],
-            audience:            _config["JWT:Audience"],
-            claims:              claims,
-            expires:             expires,
-            signingCredentials:  creds);
+            issuer: _config["JWT:Issuer"],
+            audience: _config["JWT:Audience"],
+            claims: claims,
+            expires: expires,
+            signingCredentials: creds);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }

@@ -23,9 +23,9 @@ public class TrainingSessionService : ITrainingSessionService
             .Where(s => s.IsActive)
             .AsQueryable();
 
-        if (gymId.HasValue)     query = query.Where(s => s.GymId == gymId.Value);
+        if (gymId.HasValue) query = query.Where(s => s.GymId == gymId.Value);
         if (trainerId.HasValue) query = query.Where(s => s.TrainerId == trainerId.Value);
-        if (typeId.HasValue)    query = query.Where(s => s.TrainingTypeId == typeId.Value);
+        if (typeId.HasValue) query = query.Where(s => s.TrainingTypeId == typeId.Value);
 
         return await query
             .OrderBy(s => s.Date)
@@ -57,20 +57,24 @@ public class TrainingSessionService : ITrainingSessionService
             .FirstOrDefaultAsync();
     }
 
-    public async Task<TrainingSessionDto> CreateAsync(int trainerId, CreateTrainingSessionDto dto)
+    public async Task<TrainingSessionDto> CreateAsync(int actorUserId, bool isAdmin, CreateTrainingSessionDto dto)
     {
+        await ValidateCreateOrUpdateAsync(dto);
+
+        var assignedTrainerId = await ResolveTrainerIdAsync(actorUserId, isAdmin, dto.TrainerId);
+
         var session = new TrainingSession
         {
-            Title          = dto.Title,
-            Description    = dto.Description,
-            Type           = dto.Type,
-            Date           = dto.Date,
-            StartTime      = dto.StartTime,
-            EndTime        = dto.EndTime,
+            Title = dto.Title.Trim(),
+            Description = dto.Description?.Trim(),
+            Type = dto.Type,
+            Date = dto.Date,
+            StartTime = dto.StartTime,
+            EndTime = dto.EndTime,
             MaxParticipants = dto.MaxParticipants,
-            Price          = dto.Price,
-            TrainerId      = trainerId,
-            GymId          = dto.GymId,
+            Price = dto.Price,
+            TrainerId = assignedTrainerId,
+            GymId = dto.GymId,
             TrainingTypeId = dto.TrainingTypeId
         };
 
@@ -79,12 +83,12 @@ public class TrainingSessionService : ITrainingSessionService
         return (await GetByIdAsync(session.Id))!;
     }
 
-    public async Task DeleteAsync(int id, int trainerId)
+    public async Task DeleteAsync(int id, int actorUserId, bool isAdmin)
     {
         var session = await _context.TrainingSessions.FindAsync(id)
-            ?? throw new KeyNotFoundException("Sesija nije pronađena.");
+            ?? throw new KeyNotFoundException("Sesija nije pronadjena.");
 
-        if (session.TrainerId != trainerId)
+        if (!isAdmin && session.TrainerId != actorUserId)
             throw new UnauthorizedAccessException("Nemate pravo brisati ovu sesiju.");
 
         session.IsActive = false;
@@ -96,40 +100,62 @@ public class TrainingSessionService : ITrainingSessionService
         var session = await _context.TrainingSessions
             .Include(s => s.Reservations)
             .FirstOrDefaultAsync(s => s.Id == sessionId && s.IsActive)
-            ?? throw new KeyNotFoundException("Sesija nije pronađena.");
+            ?? throw new KeyNotFoundException("Sesija nije pronadjena.");
+
+        ValidateSessionTiming(session);
 
         if (session.Type == SessionType.Group)
         {
             var hasGroupAccess = await HasActiveGroupProgramAccessAsync(userId, session);
             if (!hasGroupAccess)
-            {
-                throw new InvalidOperationException("Za rezervaciju grupnog treninga potrebna je aktivna grupna članarina za ovaj program.");
-            }
+                throw new InvalidOperationException("Za rezervaciju grupnog treninga potrebna je aktivna grupna clanarina za ovaj program.");
         }
 
         var activeCount = session.Reservations.Count(r => r.Status == ReservationStatus.Confirmed);
         if (activeCount >= session.MaxParticipants)
             throw new InvalidOperationException("Sesija je popunjena.");
 
-        if (session.Reservations.Any(r => r.UserId == userId && r.Status == ReservationStatus.Confirmed))
-            throw new InvalidOperationException("Već ste rezervisali ovu sesiju.");
+        var existingReservation = session.Reservations.FirstOrDefault(r =>
+            r.UserId == userId &&
+            r.Status != ReservationStatus.Cancelled);
 
-        var reservation = new SessionReservation { UserId = userId, TrainingSessionId = sessionId };
+        if (existingReservation is not null)
+        {
+            if (existingReservation.Status == ReservationStatus.Confirmed)
+                throw new InvalidOperationException("Vec ste rezervisali ovu sesiju.");
+
+            ApplyReservationTransition(existingReservation, ReservationStatus.Confirmed);
+            await _context.SaveChangesAsync();
+            return await LoadReservationDto(existingReservation.Id);
+        }
+
+        var reservation = new SessionReservation
+        {
+            UserId = userId,
+            TrainingSessionId = sessionId,
+            Status = ReservationStatus.Pending
+        };
+
+        ApplyReservationTransition(reservation, ReservationStatus.Confirmed);
         _context.SessionReservations.Add(reservation);
         await _context.SaveChangesAsync();
         return await LoadReservationDto(reservation.Id);
     }
 
-    public async Task CancelReservationAsync(int userId, int reservationId)
+    public async Task CancelReservationForSessionAsync(int userId, int sessionId, string? cancellationReason = null)
     {
         var reservation = await _context.SessionReservations
+            .Include(r => r.TrainingSession)
             .FirstOrDefaultAsync(r =>
-                r.TrainingSessionId == reservationId &&
+                r.TrainingSessionId == sessionId &&
                 r.UserId == userId &&
                 r.Status == ReservationStatus.Confirmed)
-            ?? throw new KeyNotFoundException("Rezervacija nije pronađena.");
+            ?? throw new KeyNotFoundException("Rezervacija nije pronadjena.");
 
-        reservation.Status = ReservationStatus.Cancelled;
+        if (reservation.TrainingSession.Date.Date < DateTime.UtcNow.Date)
+            throw new InvalidOperationException("Nije dozvoljeno otkazivanje zavrsene sesije.");
+
+        ApplyReservationTransition(reservation, ReservationStatus.Cancelled);
         await _context.SaveChangesAsync();
     }
 
@@ -138,7 +164,7 @@ public class TrainingSessionService : ITrainingSessionService
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
-        var list = await _context.SessionReservations
+        return await _context.SessionReservations
             .AsNoTracking()
             .Where(r => r.UserId == userId)
             .OrderByDescending(r => r.ReservedAt)
@@ -149,7 +175,6 @@ public class TrainingSessionService : ITrainingSessionService
                 r.TrainingSessionId, r.TrainingSession.Title, r.TrainingSession.Date,
                 r.Status, r.ReservedAt))
             .ToListAsync();
-        return list;
     }
 
     public async Task<IEnumerable<TrainingSessionDto>> GetUserPaidGroupScheduleAsync(int userId, int page = 1, int pageSize = 20)
@@ -184,9 +209,7 @@ public class TrainingSessionService : ITrainingSessionService
             .ToListAsync();
 
         if (paidGroupPrograms.Count == 0)
-        {
             return Enumerable.Empty<TrainingSessionDto>();
-        }
 
         var programKeys = paidGroupPrograms
             .Select(pg => BuildProgramKey(
@@ -204,10 +227,7 @@ public class TrainingSessionService : ITrainingSessionService
             .Include(s => s.Gym)
             .Include(s => s.TrainingType)
             .Include(s => s.Reservations)
-            .Where(s =>
-                s.IsActive &&
-                s.Type == SessionType.Group &&
-                s.Date >= now.Date)
+            .Where(s => s.IsActive && s.Type == SessionType.Group && s.Date >= now.Date)
             .ToListAsync();
 
         var sessions = candidateSessions
@@ -227,10 +247,7 @@ public class TrainingSessionService : ITrainingSessionService
         return sessions.Select(ToDto);
     }
 
-    public async Task<IEnumerable<RecommendedGymDto>> GetRecommendedGymsAsync(
-        int userId,
-        string? city,
-        int? trainingTypeId)
+    public async Task<IEnumerable<RecommendedGymDto>> GetRecommendedGymsAsync(int userId, string? city, int? trainingTypeId)
     {
         var normalizedCity = city?.Trim().ToLowerInvariant();
 
@@ -239,7 +256,7 @@ public class TrainingSessionService : ITrainingSessionService
             .Include(u => u.City)
             .Include(u => u.Memberships)
             .FirstOrDefaultAsync(u => u.Id == userId)
-            ?? throw new KeyNotFoundException("Korisnik nije pronađen.");
+            ?? throw new KeyNotFoundException("Korisnik nije pronadjen.");
 
         var checkIns = await _context.CheckIns
             .AsNoTracking()
@@ -302,21 +319,15 @@ public class TrainingSessionService : ITrainingSessionService
                 }
 
                 if (user.PrimaryGymId == gym.Id)
-                {
                     score += 4;
-                }
 
                 if (visitedGyms.TryGetValue(gym.Name.Trim(), out var visitCount))
-                {
                     score += visitCount * 2;
-                }
 
                 foreach (var session in gym.TrainingSessions)
                 {
                     if (trainingTypeId.HasValue && session.TrainingTypeId == trainingTypeId.Value)
-                    {
                         score += 3;
-                    }
 
                     var typeName = session.TrainingType.Name.Trim();
                     if (preferredTypes.TryGetValue(typeName, out var weight))
@@ -333,12 +344,15 @@ public class TrainingSessionService : ITrainingSessionService
                 score += gym.TrainingSessions.Count * 0.15;
 
                 var reason = trainingTypeId.HasValue
-                    ? "Podudaranje s odabranim tipom treninga"
+                    ? "Podudaranje sa odabranim tipom treninga"
                     : matchedTypes.Count > 0
-                        ? $"Na osnovu vaše aktivnosti: {string.Join(", ", matchedTypes.Distinct().Take(2))}"
+                        ? $"Na osnovu vase aktivnosti: {string.Join(", ", matchedTypes.Distinct().Take(2))}"
                         : user.PrimaryGymId == gym.Id
-                            ? "Preporuka na osnovu vaše aktivne teretane"
-                            : "Dobra dostupnost termina i posjećenosti";
+                            ? "Cesto koristite ovu teretanu"
+                            : !string.IsNullOrWhiteSpace(user.City?.Name) &&
+                              string.Equals(user.City.Name, gym.City.Name, StringComparison.OrdinalIgnoreCase)
+                                ? "U vasem gradu i blizu vase uobicajene lokacije"
+                                : "Dobra dostupnost termina i posjecenosti";
 
                 return new RecommendedGymDto(
                     gym.Id,
@@ -452,9 +466,7 @@ public class TrainingSessionService : ITrainingSessionService
                 }).ToLowerInvariant();
 
                 if (!string.IsNullOrWhiteSpace(normalizedSearch) && !haystack.Contains(normalizedSearch))
-                {
                     return null;
-                }
 
                 return new TrainerProfileDto(
                     trainer.Id,
@@ -485,6 +497,68 @@ public class TrainingSessionService : ITrainingSessionService
             .ToList();
 
         return profiles;
+    }
+
+    private async Task ValidateCreateOrUpdateAsync(CreateTrainingSessionDto dto)
+    {
+        if (dto.EndTime <= dto.StartTime)
+            throw new InvalidOperationException("Vrijeme zavrsetka mora biti nakon vremena pocetka.");
+
+        if (dto.Date.Date < DateTime.UtcNow.Date)
+            throw new InvalidOperationException("Trening sesija ne moze biti zakazana u proslosti.");
+
+        var gymExists = await _context.Gyms.AnyAsync(g => g.Id == dto.GymId);
+        if (!gymExists)
+            throw new InvalidOperationException("Odabrana teretana ne postoji.");
+
+        var trainingTypeExists = await _context.TrainingTypes.AnyAsync(t => t.Id == dto.TrainingTypeId);
+        if (!trainingTypeExists)
+            throw new InvalidOperationException("Odabrani tip treninga ne postoji.");
+    }
+
+    private async Task<int> ResolveTrainerIdAsync(int actorUserId, bool isAdmin, int? requestedTrainerId)
+    {
+        if (!isAdmin)
+        {
+            if (requestedTrainerId.HasValue && requestedTrainerId.Value != actorUserId)
+                throw new UnauthorizedAccessException("Trener moze kreirati samo svoje sesije.");
+
+            return actorUserId;
+        }
+
+        var trainerId = requestedTrainerId ?? actorUserId;
+        var trainerExists = await _context.Users.AnyAsync(u => u.Id == trainerId && (u.Role == UserRole.Trainer || u.Role == UserRole.Admin));
+        if (!trainerExists)
+            throw new InvalidOperationException("Odabrani trener nije pronadjen.");
+
+        return trainerId;
+    }
+
+    private static void ValidateSessionTiming(TrainingSession session)
+    {
+        var start = session.Date.Date + session.StartTime.ToTimeSpan();
+        if (start < DateTime.UtcNow)
+            throw new InvalidOperationException("Rezervacija nije dozvoljena za termine koji su vec poceli ili zavrseni.");
+    }
+
+    private static void ApplyReservationTransition(SessionReservation reservation, ReservationStatus targetStatus)
+    {
+        if (reservation.Status == targetStatus)
+            return;
+
+        var allowed = reservation.Status switch
+        {
+            ReservationStatus.Pending => targetStatus is ReservationStatus.Confirmed or ReservationStatus.Cancelled,
+            ReservationStatus.Confirmed => targetStatus is ReservationStatus.Cancelled or ReservationStatus.Completed,
+            ReservationStatus.Cancelled => false,
+            ReservationStatus.Completed => false,
+            _ => false
+        };
+
+        if (!allowed)
+            throw new InvalidOperationException($"Prelaz rezervacije iz stanja {reservation.Status} u {targetStatus} nije dozvoljen.");
+
+        reservation.Status = targetStatus;
     }
 
     private static string BuildProgramKey(
@@ -534,7 +608,8 @@ public class TrainingSessionService : ITrainingSessionService
     private async Task<SessionReservationDto> LoadReservationDto(int id)
     {
         var r = await _context.SessionReservations
-            .Include(r => r.User).Include(r => r.TrainingSession)
+            .Include(r => r.User)
+            .Include(r => r.TrainingSession)
             .FirstAsync(r => r.Id == id);
         return ToReservationDto(r);
     }

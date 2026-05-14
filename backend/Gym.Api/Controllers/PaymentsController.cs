@@ -2,7 +2,6 @@ using Gym.Api.DTOs;
 using Gym.Api.Extensions;
 using Gym.Api.Services;
 using Gym.Services.DTOs;
-using Gym.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
@@ -26,9 +25,7 @@ public class PaymentsController(
     {
         var userId = User.GetUserId();
         if (!userId.HasValue)
-        {
             return Unauthorized();
-        }
 
         await stripePaymentSyncService.ReconcileLatestMembershipPaymentsAsync(userId.Value);
         return Ok(await paymentAppService.GetMyPaymentsAsync(userId.Value, page, pageSize, take));
@@ -39,27 +36,22 @@ public class PaymentsController(
     {
         var userId = User.GetUserId();
         if (!userId.HasValue)
-        {
             return Unauthorized();
-        }
 
         var payment = await stripePaymentSyncService.ReconcilePaymentAsync(paymentId, userId.Value);
         if (payment is null)
-        {
-            return NotFound(new { message = "Uplata nije pronađena." });
-        }
+            return NotFound(new { message = "Uplata nije pronadjena." });
 
         return Ok(new PaymentStatusDto(payment.Id, payment.Status, payment.CreatedAt, payment.CompletedAt));
     }
 
     [HttpPost("shop-order")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateShopOrder([FromBody] CreateShopOrderDto dto)
     {
         var userId = User.GetUserId();
         if (!userId.HasValue)
-        {
             return Unauthorized();
-        }
 
         try
         {
@@ -68,7 +60,7 @@ public class PaymentsController(
         }
         catch (StripeException ex)
         {
-            return BadRequest(new { message = $"Stripe greška: {ex.Message}" });
+            return BadRequest(new { message = $"Stripe greska: {ex.Message}" });
         }
     }
 
@@ -77,9 +69,7 @@ public class PaymentsController(
     {
         var userId = User.GetUserId();
         if (!userId.HasValue)
-        {
             return Unauthorized();
-        }
 
         try
         {
@@ -88,7 +78,7 @@ public class PaymentsController(
         }
         catch (StripeException ex)
         {
-            return BadRequest(new { message = $"Stripe greška: {ex.Message}" });
+            return BadRequest(new { message = $"Stripe greska: {ex.Message}" });
         }
     }
 
@@ -97,9 +87,7 @@ public class PaymentsController(
     {
         var userId = User.GetUserId();
         if (!userId.HasValue)
-        {
             return Unauthorized();
-        }
 
         try
         {
@@ -108,7 +96,7 @@ public class PaymentsController(
         }
         catch (StripeException ex)
         {
-            return BadRequest(new { message = $"Stripe greška: {ex.Message}" });
+            return BadRequest(new { message = $"Stripe greska: {ex.Message}" });
         }
     }
 
@@ -117,9 +105,7 @@ public class PaymentsController(
     {
         var userId = User.GetUserId();
         if (!userId.HasValue)
-        {
             return Unauthorized();
-        }
 
         try
         {
@@ -128,27 +114,26 @@ public class PaymentsController(
         }
         catch (StripeException ex)
         {
-            return BadRequest(new { message = $"Stripe greška: {ex.Message}" });
+            return BadRequest(new { message = $"Stripe greska: {ex.Message}" });
         }
     }
 
     [HttpPost("{paymentId:int}/refund")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> RefundPayment(int paymentId, [FromBody] RefundPaymentDto? dto)
     {
         var userId = User.GetUserId();
         if (!userId.HasValue)
-        {
             return Unauthorized();
-        }
 
         try
         {
-            var result = await paymentAppService.RefundPaymentAsync(userId.Value, paymentId, dto?.Reason);
+            var result = await paymentAppService.RefundPaymentAsync(paymentId, userId.Value, dto?.Reason);
             return Ok(result);
         }
         catch (StripeException ex)
         {
-            return BadRequest(new { message = $"Stripe refund greška: {ex.Message}" });
+            return BadRequest(new { message = $"Stripe refund greska: {ex.Message}" });
         }
     }
 

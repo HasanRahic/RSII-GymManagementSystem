@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Gym.Core.Enums;
 
 namespace Gym.Services.DTOs;
@@ -23,16 +24,24 @@ public record TrainingSessionDto(
 );
 
 public record CreateTrainingSessionDto(
+    [property: Required, StringLength(100, MinimumLength = 3)]
     string Title,
+    [property: StringLength(500)]
     string? Description,
     SessionType Type,
+    [property: DataType(DataType.Date)]
     DateTime Date,
     TimeOnly StartTime,
     TimeOnly EndTime,
+    [property: Range(1, 500)]
     int MaxParticipants,
+    [property: Range(typeof(decimal), "0", "1000000")]
     decimal Price,
+    [property: Range(1, int.MaxValue)]
     int GymId,
-    int TrainingTypeId
+    [property: Range(1, int.MaxValue)]
+    int TrainingTypeId,
+    int? TrainerId = null
 );
 
 public record SessionReservationDto(

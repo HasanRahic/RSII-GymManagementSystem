@@ -187,18 +187,7 @@ public class StripePaymentSyncService(
             return false;
         }
 
-        var discountPercent = 0m;
-        if (metadata.TryGetValue("discountPercent", out var discountRaw))
-        {
-            decimal.TryParse(
-                discountRaw,
-                System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out discountPercent);
-        }
-
-        discountPercent = Math.Clamp(discountPercent, 0m, 100m);
-        dto = new RenewMembershipDto(payment.UserId, planId, discountPercent);
+        dto = new RenewMembershipDto(payment.UserId, planId, 0m);
         return true;
     }
 
