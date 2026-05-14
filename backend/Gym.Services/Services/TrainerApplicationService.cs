@@ -34,53 +34,80 @@ public class TrainerApplicationService : ITrainerApplicationService
 
     public async Task<TrainerApplicationDto?> GetByIdAsync(int id)
     {
-        var a = await _context.TrainerApplications
+        var application = await _context.TrainerApplications
             .Include(a => a.User)
             .FirstOrDefaultAsync(a => a.Id == id);
-        return a is null ? null : ToDto(a);
+
+        return application is null ? null : ToDto(application);
     }
 
     public async Task<TrainerApplicationDto> CreateAsync(int userId, CreateTrainerApplicationDto dto)
     {
+        var user = await _context.Users.FindAsync(userId)
+            ?? throw new KeyNotFoundException("Korisnik nije pronadjen.");
+
+        if (user.Role == UserRole.Trainer)
+            throw new InvalidOperationException("Korisnik vec ima trener ulogu.");
+
         var hasPending = await _context.TrainerApplications
             .AnyAsync(a => a.UserId == userId && a.Status == ApplicationStatus.Pending);
         if (hasPending)
-            throw new InvalidOperationException("Već imate zahtjev na čekanju.");
+            throw new InvalidOperationException("Vec imate zahtjev na cekanju.");
 
-        var app = new TrainerApplication
+        var application = new TrainerApplication
         {
-            UserId         = userId,
-            Biography      = dto.Biography,
-            Experience     = dto.Experience,
-            Certifications = dto.Certifications,
-            Availability   = dto.Availability
+            UserId = userId,
+            User = user,
+            Biography = dto.Biography.Trim(),
+            Experience = dto.Experience.Trim(),
+            Certifications = string.IsNullOrWhiteSpace(dto.Certifications) ? null : dto.Certifications.Trim(),
+            Availability = string.IsNullOrWhiteSpace(dto.Availability) ? null : dto.Availability.Trim()
         };
-        _context.TrainerApplications.Add(app);
+
+        _context.TrainerApplications.Add(application);
         await _context.SaveChangesAsync();
-        await _context.Entry(app).Reference(a => a.User).LoadAsync();
-        return ToDto(app);
+        return ToDto(application);
     }
 
     public async Task<TrainerApplicationDto> ReviewAsync(int id, int adminId, ReviewApplicationDto dto)
     {
-        var app = await _context.TrainerApplications.Include(a => a.User)
+        var application = await _context.TrainerApplications
+            .Include(a => a.User)
             .FirstOrDefaultAsync(a => a.Id == id)
-            ?? throw new KeyNotFoundException("Zahtjev nije pronađen.");
+            ?? throw new KeyNotFoundException("Zahtjev nije pronadjen.");
 
-        app.Status              = dto.Status;
-        app.AdminNote           = dto.AdminNote;
-        app.ReviewedByAdminId   = adminId;
-        app.ReviewedAt          = DateTime.UtcNow;
+        if (application.Status != ApplicationStatus.Pending)
+            throw new InvalidOperationException("Dozvoljena je obrada samo zahtjeva koji su trenutno na cekanju.");
+
+        if (dto.Status == ApplicationStatus.Pending)
+            throw new InvalidOperationException("Review mora zavrsiti zahtjev odobravanjem ili odbijanjem.");
+
+        if (dto.Status == ApplicationStatus.Rejected && string.IsNullOrWhiteSpace(dto.AdminNote))
+            throw new InvalidOperationException("Kod odbijanja zahtjeva admin napomena je obavezna.");
+
+        application.Status = dto.Status;
+        application.AdminNote = string.IsNullOrWhiteSpace(dto.AdminNote) ? null : dto.AdminNote.Trim();
+        application.ReviewedByAdminId = adminId;
+        application.ReviewedAt = DateTime.UtcNow;
 
         if (dto.Status == ApplicationStatus.Approved)
-            app.User.Role = UserRole.Trainer;
+            application.User.Role = UserRole.Trainer;
 
         await _context.SaveChangesAsync();
-        return ToDto(app);
+        return ToDto(application);
     }
 
     private static TrainerApplicationDto ToDto(TrainerApplication a) => new(
-        a.Id, a.UserId, $"{a.User.FirstName} {a.User.LastName}", a.User.Email,
-        a.Biography, a.Experience, a.Certifications, a.Availability,
-        a.Status, a.AdminNote, a.SubmittedAt, a.ReviewedAt);
+        a.Id,
+        a.UserId,
+        $"{a.User.FirstName} {a.User.LastName}",
+        a.User.Email,
+        a.Biography,
+        a.Experience,
+        a.Certifications,
+        a.Availability,
+        a.Status,
+        a.AdminNote,
+        a.SubmittedAt,
+        a.ReviewedAt);
 }

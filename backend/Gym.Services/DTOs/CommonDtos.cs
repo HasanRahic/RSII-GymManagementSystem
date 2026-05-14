@@ -82,6 +82,26 @@ public record AccessStatusDto(
 public record CityDto(int Id, string Name, string? PostalCode, int CountryId, string CountryName);
 public record CountryDto(int Id, string Name, string Code);
 public record TrainingTypeDto(int Id, string Name, string? Description);
+public record CreateCountryDto(
+    [property: Required, StringLength(100, MinimumLength = 2)] string Name,
+    [property: Required, StringLength(10, MinimumLength = 2)] string Code);
+public record UpdateCountryDto(
+    [property: Required, StringLength(100, MinimumLength = 2)] string Name,
+    [property: Required, StringLength(10, MinimumLength = 2)] string Code);
+public record CreateCityDto(
+    [property: Required, StringLength(100, MinimumLength = 2)] string Name,
+    [property: StringLength(20)] string? PostalCode,
+    [property: Range(1, int.MaxValue)] int CountryId);
+public record UpdateCityDto(
+    [property: Required, StringLength(100, MinimumLength = 2)] string Name,
+    [property: StringLength(20)] string? PostalCode,
+    [property: Range(1, int.MaxValue)] int CountryId);
+public record CreateTrainingTypeDto(
+    [property: Required, StringLength(100, MinimumLength = 2)] string Name,
+    [property: StringLength(500)] string? Description);
+public record UpdateTrainingTypeDto(
+    [property: Required, StringLength(100, MinimumLength = 2)] string Name,
+    [property: StringLength(500)] string? Description);
 public record BadgeDto(int Id, string Name, string Description, string? IconUrl, string Type, int RequiredCount);
 public record UserBadgeDto(int BadgeId, string BadgeName, string BadgeDescription, string? IconUrl, DateTime EarnedAt);
 
