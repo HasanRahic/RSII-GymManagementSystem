@@ -1,9 +1,11 @@
 using System.Globalization;
 using Gym.Api.DTOs;
+using Gym.Api.Messaging;
 using Gym.Core.Entities;
 using Gym.Core.Enums;
 using Gym.Infrastructure.Data;
 using Gym.Services.DTOs;
+using Gym.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Stripe;
 using Stripe.Checkout;
@@ -12,7 +14,9 @@ namespace Gym.Api.Services;
 
 public sealed class PaymentAppService(
     GymDbContext context,
-    IConfiguration configuration) : IPaymentAppService
+    IConfiguration configuration,
+    INotificationService notificationService,
+    INotificationPublisher notificationPublisher) : IPaymentAppService
 {
     public async Task<IReadOnlyList<PaymentListItemDto>> GetMyPaymentsAsync(int userId, int page, int pageSize, int? take = null)
     {
@@ -348,6 +352,19 @@ public sealed class PaymentAppService(
 
         await context.SaveChangesAsync();
 
+        await notificationService.CreateAsync(new CreateNotificationDto(
+            payment.UserId,
+            "Uplata refundirana",
+            $"Vasa uplata #{payment.Id} je refundirana.",
+            "PaymentRefunded",
+            "Payment",
+            payment.Id));
+
+        await SendEmailNotificationAsync(
+            payment.UserId,
+            "Refundirana uplata",
+            $"Vasa uplata #{payment.Id} je refundirana i status je azuriran u sistemu.");
+
         return new PaymentStatusDto(payment.Id, payment.Status, payment.CreatedAt, payment.CompletedAt);
     }
 
@@ -433,4 +450,21 @@ public sealed class PaymentAppService(
         365 => monthlyBasePrice * 12m * 0.80m,
         _ => monthlyBasePrice
     };
+
+    private async Task SendEmailNotificationAsync(int userId, string subject, string body)
+    {
+        var user = await context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => new { u.Email, FullName = u.FirstName + " " + u.LastName })
+            .FirstOrDefaultAsync();
+
+        if (user is null || string.IsNullOrWhiteSpace(user.Email))
+            return;
+
+        await notificationPublisher.PublishAsync(new NotificationMessage(
+            user.Email,
+            subject,
+            $"Pozdrav {user.FullName},\n\n{body}"));
+    }
 }

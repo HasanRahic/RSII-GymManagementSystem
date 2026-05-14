@@ -393,6 +393,46 @@ class CheckInModel {
   bool get isActive => checkOutTime == null;
 }
 
+class NotificationModel {
+  final int id;
+  final String title;
+  final String message;
+  final String type;
+  final String? relatedEntityType;
+  final int? relatedEntityId;
+  final bool isRead;
+  final String createdAt;
+  final String? readAt;
+
+  NotificationModel({
+    required this.id,
+    required this.title,
+    required this.message,
+    required this.type,
+    required this.relatedEntityType,
+    required this.relatedEntityId,
+    required this.isRead,
+    required this.createdAt,
+    required this.readAt,
+  });
+
+  factory NotificationModel.fromJson(Map<String, dynamic> j) {
+    return NotificationModel(
+      id: j['id'] ?? 0,
+      title: (j['title'] ?? '').toString(),
+      message: (j['message'] ?? '').toString(),
+      type: (j['type'] ?? '').toString(),
+      relatedEntityType: j['relatedEntityType']?.toString(),
+      relatedEntityId: j['relatedEntityId'] is num
+          ? (j['relatedEntityId'] as num).toInt()
+          : int.tryParse('${j['relatedEntityId']}'),
+      isRead: j['isRead'] ?? false,
+      createdAt: (j['createdAt'] ?? '').toString(),
+      readAt: j['readAt']?.toString(),
+    );
+  }
+}
+
 class ProgressMeasurementModel {
   final int id;
   final int userId;

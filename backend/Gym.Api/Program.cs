@@ -44,6 +44,7 @@ builder.Services.AddScoped<IPaymentAppService, PaymentAppService>();
 builder.Services.AddScoped<IStripeWebhookService, StripeWebhookService>();
 builder.Services.AddScoped<IMembershipAccessService, MembershipAccessService>();
 builder.Services.AddScoped<IReferenceService, ReferenceService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddSingleton<ITokenRevocationService, InMemoryTokenRevocationService>();
 
 // JWT Authentication
