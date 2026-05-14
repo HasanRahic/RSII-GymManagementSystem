@@ -4406,7 +4406,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return '${gym.currentOccupancy} trenutno u teretani';
     }
 
-    Widget buildGymCard(GymModel gym) {
+    Widget buildGymCard(GymModel gym, {String? recommendationReason}) {
       return _GymCard(
         name: gym.name,
         city: '${gym.cityName}, ${gym.countryName}',
@@ -4414,6 +4414,7 @@ class _HomeScreenState extends State<HomeScreen> {
         reviews: reviewsFromGym(gym),
         status: gym.statusLabel,
         tags: tagsForGym(gym),
+        recommendationReason: recommendationReason,
         accent: gym.isOpen ? const Color(0xFF3BB76A) : const Color(0xFFE76F6F),
         onDetails: () => _openGymOffers(gym),
         onJoin: () => _openGymOffers(gym),
@@ -4702,7 +4703,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ...displayedRecommendedForYou.map(
               (gym) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: buildGymCard(gym),
+                child: buildGymCard(
+                  gym,
+                  recommendationReason: recommendationByGymId[gym.id]?.reason,
+                ),
               ),
             ),
           const SizedBox(height: 18),
@@ -7004,6 +7008,7 @@ class _GymCard extends StatelessWidget {
   final String reviews;
   final String status;
   final List<String> tags;
+  final String? recommendationReason;
   final Color accent;
   final VoidCallback onDetails;
   final VoidCallback onJoin;
@@ -7015,6 +7020,7 @@ class _GymCard extends StatelessWidget {
     required this.reviews,
     required this.status,
     required this.tags,
+    this.recommendationReason,
     required this.accent,
     required this.onDetails,
     required this.onJoin,
@@ -7088,6 +7094,37 @@ class _GymCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
+          if (recommendationReason != null &&
+              recommendationReason!.trim().isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF2FF),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.auto_awesome,
+                    size: 16,
+                    color: Color(0xFF657BE6),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      recommendationReason!,
+                      style: const TextStyle(
+                        color: Color(0xFF51607A),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
           Wrap(
             spacing: 8,
             runSpacing: 8,

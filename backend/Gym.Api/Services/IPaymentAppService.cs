@@ -10,5 +10,5 @@ public interface IPaymentAppService
     Task<StripeCheckoutDto> CreateMembershipCheckoutAsync(int userId, CreateCheckoutSessionDto dto, string domainUrl);
     Task<StripeCheckoutDto> CreateSessionCheckoutAsync(int userId, CreateCheckoutSessionDto dto, string domainUrl);
     Task<StripeCheckoutDto> RetryCheckoutAsync(int userId, int paymentId, string domainUrl);
-    Task<PaymentStatusDto> RefundPaymentAsync(int userId, int paymentId, string? reason);
+    Task<PaymentStatusDto> RefundPaymentAsync(int paymentId, int adminUserId, string? reason);
 }

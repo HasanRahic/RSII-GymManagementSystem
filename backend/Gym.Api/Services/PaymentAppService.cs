@@ -44,16 +44,12 @@ public sealed class PaymentAppService(
         EnsureStripeConfigured();
 
         if (dto.Items is null || dto.Items.Count == 0)
-        {
             throw new InvalidOperationException("Korpa je prazna.");
-        }
 
         var hasInvalidItem = dto.Items.Any(i =>
             string.IsNullOrWhiteSpace(i.Name) || i.UnitPrice <= 0 || i.Quantity <= 0);
         if (hasInvalidItem)
-        {
             throw new InvalidOperationException("Artikli u korpi nisu validni.");
-        }
 
         var totalAmount = dto.Items.Sum(i => i.UnitPrice * i.Quantity);
         var userEmail = await RequireUserEmailAsync(userId);
@@ -102,18 +98,15 @@ public sealed class PaymentAppService(
         EnsureStripeConfigured();
 
         if (dto.Type != PaymentType.Membership || !dto.MembershipPlanId.HasValue)
-        {
-            throw new InvalidOperationException("Neispravan tip članarine.");
-        }
+            throw new InvalidOperationException("Neispravan tip clanarine.");
 
         var plan = await context.MembershipPlans
             .Include(p => p.Gym)
-            .FirstOrDefaultAsync(p => p.Id == dto.MembershipPlanId.Value)
-            ?? throw new KeyNotFoundException("Plan članarine nije pronađen.");
+            .FirstOrDefaultAsync(p => p.Id == dto.MembershipPlanId.Value && p.IsActive)
+            ?? throw new KeyNotFoundException("Plan clanarine nije pronadjen.");
 
         var userEmail = await RequireUserEmailAsync(userId);
-        var discountPercent = Math.Clamp(dto.DiscountPercent, 0, 100);
-        var totalAmount = plan.Price * (1 - discountPercent / 100m);
+        var totalAmount = plan.Price;
 
         var payment = new Payment
         {
@@ -133,8 +126,7 @@ public sealed class PaymentAppService(
             ["paymentId"] = payment.Id.ToString(),
             ["userId"] = userId.ToString(),
             ["type"] = "Membership",
-            ["membershipPlanId"] = plan.Id.ToString(),
-            ["discountPercent"] = discountPercent.ToString(CultureInfo.InvariantCulture)
+            ["membershipPlanId"] = plan.Id.ToString()
         };
 
         var session = await CreateCheckoutSessionAsync(
@@ -150,7 +142,7 @@ public sealed class PaymentAppService(
                         ProductData = new SessionLineItemPriceDataProductDataOptions
                         {
                             Name = plan.Name,
-                            Description = $"Članarina za {plan.Gym.Name}"
+                            Description = $"Clanarina za {plan.Gym.Name}"
                         },
                         UnitAmountDecimal = totalAmount * 100m
                     },
@@ -167,9 +159,7 @@ public sealed class PaymentAppService(
         EnsureStripeConfigured();
 
         if (dto.Type != PaymentType.Session || !dto.TrainingSessionId.HasValue)
-        {
             throw new InvalidOperationException("Neispravan tip grupnog treninga.");
-        }
 
         var durationDays = NormalizeSessionDuration(dto.SessionDurationDays)
             ?? throw new InvalidOperationException("Neispravno trajanje grupnog treninga. Dozvoljeno: 30, 90, 180, 365 dana.");
@@ -177,7 +167,7 @@ public sealed class PaymentAppService(
         var trainingSession = await context.TrainingSessions
             .Include(s => s.Gym)
             .FirstOrDefaultAsync(s => s.Id == dto.TrainingSessionId.Value && s.IsActive)
-            ?? throw new KeyNotFoundException("Grupni trening nije pronađen.");
+            ?? throw new KeyNotFoundException("Grupni trening nije pronadjen.");
 
         var userEmail = await RequireUserEmailAsync(userId);
 
@@ -234,12 +224,10 @@ public sealed class PaymentAppService(
         EnsureStripeConfigured();
 
         var payment = await context.Payments.FirstOrDefaultAsync(p => p.Id == paymentId && p.UserId == userId)
-            ?? throw new KeyNotFoundException("Uplata nije pronađena.");
+            ?? throw new KeyNotFoundException("Uplata nije pronadjena.");
 
         if (payment.Status != PaymentStatus.Failed)
-        {
-            throw new InvalidOperationException("Samo neuspješne uplate se mogu ponovno pokušati.");
-        }
+            throw new InvalidOperationException("Samo neuspjesne uplate se mogu ponovno pokusati.");
 
         var userEmail = await RequireUserEmailAsync(userId);
 
@@ -272,9 +260,7 @@ public sealed class PaymentAppService(
                 .FirstOrDefaultAsync();
 
             if (membershipPlanId > 0)
-            {
                 metadata["membershipPlanId"] = membershipPlanId.ToString();
-            }
         }
         else if (payment.Type == PaymentType.Session && payment.SessionAccessDays.HasValue)
         {
@@ -302,8 +288,8 @@ public sealed class PaymentAppService(
                         Currency = "bam",
                         ProductData = new SessionLineItemPriceDataProductDataOptions
                         {
-                            Name = "Pokušaj - Pretprethodna plaćanja",
-                            Description = $"Pokušaj neuspješne uplate #{paymentId}"
+                            Name = "Pokusaj - prethodna placanja",
+                            Description = $"Pokusaj neuspjesne uplate #{paymentId}"
                         },
                         UnitAmountDecimal = payment.Amount * 100m
                     },
@@ -315,25 +301,21 @@ public sealed class PaymentAppService(
         return new StripeCheckoutDto(newPayment.Id, session.Url ?? string.Empty, newPayment.Amount);
     }
 
-    public async Task<PaymentStatusDto> RefundPaymentAsync(int userId, int paymentId, string? reason)
+    public async Task<PaymentStatusDto> RefundPaymentAsync(int paymentId, int adminUserId, string? reason)
     {
         EnsureStripeConfigured();
 
         var payment = await context.Payments
             .Include(p => p.UserMembership)
             .Include(p => p.SessionReservation)
-            .FirstOrDefaultAsync(p => p.Id == paymentId && p.UserId == userId)
-            ?? throw new KeyNotFoundException("Uplata nije pronađena.");
+            .FirstOrDefaultAsync(p => p.Id == paymentId)
+            ?? throw new KeyNotFoundException("Uplata nije pronadjena.");
 
         if (payment.Status != PaymentStatus.Succeeded)
-        {
-            throw new InvalidOperationException("Refund je dozvoljen samo za uspješno završene uplate.");
-        }
+            throw new InvalidOperationException("Refund je dozvoljen samo za uspjesno zavrsene uplate.");
 
         if (string.IsNullOrWhiteSpace(payment.StripePaymentIntentId))
-        {
             throw new InvalidOperationException("Za ovu uplatu nije evidentiran Stripe payment intent.");
-        }
 
         var refundService = new RefundService();
         await refundService.CreateAsync(new RefundCreateOptions
@@ -344,6 +326,7 @@ public sealed class PaymentAppService(
             {
                 ["paymentId"] = payment.Id.ToString(),
                 ["userId"] = payment.UserId.ToString(),
+                ["adminUserId"] = adminUserId.ToString(),
                 ["note"] = string.IsNullOrWhiteSpace(reason) ? "Manual refund" : reason
             }
         });
@@ -377,9 +360,7 @@ public sealed class PaymentAppService(
             .FirstOrDefaultAsync();
 
         if (string.IsNullOrWhiteSpace(userEmail))
-        {
             throw new InvalidOperationException("Korisnik nema validan email za Stripe checkout.");
-        }
 
         return userEmail;
     }

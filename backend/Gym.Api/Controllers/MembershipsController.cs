@@ -1,6 +1,5 @@
 using Gym.Api.Extensions;
 using Gym.Api.Services;
-using Gym.Core.Enums;
 using Gym.Services.DTOs;
 using Gym.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -72,16 +71,6 @@ public class MembershipsController(
         return Ok(await membershipAccessService.GetAccessStatusAsync(userId.Value));
     }
 
-    [HttpPost("renew")]
-    public async Task<IActionResult> Renew([FromBody] RenewMembershipDto dto)
-    {
-        var userId = User.GetUserId();
-        if (!userId.HasValue) return Unauthorized();
-
-        var result = await membershipService.RenewAsync(dto with { UserId = userId.Value });
-        return result is null ? BadRequest(new { message = "Plan not found." }) : Ok(result);
-    }
-
     [HttpPost("{id:int}/cancel")]
     public async Task<IActionResult> Cancel(int id)
     {
@@ -89,6 +78,6 @@ public class MembershipsController(
         if (!userId.HasValue) return Unauthorized();
 
         var result = await membershipService.CancelMembershipAsync(userId.Value, id);
-        return result is null ? NotFound(new { message = "Članarina nije pronađena." }) : Ok(result);
+        return result is null ? NotFound(new { message = "Clanarina nije pronadjena." }) : Ok(result);
     }
 }

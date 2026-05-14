@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Gym.Core.Enums;
 
 namespace Gym.Services.DTOs;
@@ -19,7 +20,6 @@ public record CreateCheckoutSessionDto(
     PaymentType Type,
     int? MembershipPlanId,
     int? TrainingSessionId,
-    decimal DiscountPercent,
     int? SessionDurationDays
 );
 

@@ -17,6 +17,7 @@ public class MembershipService : IMembershipService
     {
         var query = _context.MembershipPlans.AsNoTracking().AsQueryable();
         if (gymId.HasValue) query = query.Where(p => p.GymId == gymId.Value);
+
         return await query
             .Select(p => new MembershipPlanDto(
                 p.Id, p.Name, p.Description, p.DurationDays, p.Price, p.IsActive, p.GymId, p.Gym.Name))
@@ -27,12 +28,13 @@ public class MembershipService : IMembershipService
     {
         var plan = new MembershipPlan
         {
-            Name         = dto.Name,
-            Description  = dto.Description,
+            Name = dto.Name,
+            Description = dto.Description,
             DurationDays = dto.DurationDays,
-            Price        = dto.Price,
-            GymId        = dto.GymId
+            Price = dto.Price,
+            GymId = dto.GymId
         };
+
         _context.MembershipPlans.Add(plan);
         await _context.SaveChangesAsync();
         await _context.Entry(plan).Reference(p => p.Gym).LoadAsync();
@@ -44,11 +46,11 @@ public class MembershipService : IMembershipService
         var plan = await _context.MembershipPlans.Include(p => p.Gym).FirstOrDefaultAsync(p => p.Id == id)
             ?? throw new KeyNotFoundException("Plan nije pronadjen.");
 
-        plan.Name         = dto.Name;
-        plan.Description  = dto.Description;
+        plan.Name = dto.Name;
+        plan.Description = dto.Description;
         plan.DurationDays = dto.DurationDays;
-        plan.Price        = dto.Price;
-        plan.IsActive     = dto.IsActive;
+        plan.Price = dto.Price;
+        plan.IsActive = dto.IsActive;
         await _context.SaveChangesAsync();
         return ToPlanDto(plan);
     }
@@ -62,6 +64,7 @@ public class MembershipService : IMembershipService
             .Include(m => m.User)
             .OrderByDescending(m => m.StartDate)
             .ToListAsync();
+
         return memberships.Select(ToMembershipDto);
     }
 
@@ -85,43 +88,41 @@ public class MembershipService : IMembershipService
     {
         await ExpireEndedMembershipsAsync(userId);
 
-        var m = await _context.UserMemberships
+        var membership = await _context.UserMemberships
             .AsNoTracking()
             .Include(m => m.MembershipPlan)
             .Include(m => m.Gym)
             .Include(m => m.User)
             .FirstOrDefaultAsync(m => m.UserId == userId && m.Status == MembershipStatus.Active);
 
-        return m is null ? null : ToMembershipDto(m);
+        return membership is null ? null : ToMembershipDto(membership);
     }
 
     public Task<UserMembershipDto> RenewAsync(RenewMembershipDto dto)
-        => RenewInternalAsync(dto, paymentId: null);
+        => throw new InvalidOperationException("Direktno aktiviranje clanarine je onemoguceno. Koristite checkout tok placanja.");
 
     public Task<UserMembershipDto> RenewFromPaymentAsync(int paymentId, RenewMembershipDto dto)
         => RenewInternalAsync(dto, paymentId);
 
     private async Task<UserMembershipDto> RenewInternalAsync(RenewMembershipDto dto, int? paymentId)
     {
-        var plan = await _context.MembershipPlans.Include(p => p.Gym).FirstOrDefaultAsync(p => p.Id == dto.MembershipPlanId)
+        if (!paymentId.HasValue)
+            throw new InvalidOperationException("Aktivacija clanarine je dozvoljena samo nakon potvrdjene uplate.");
+
+        var plan = await _context.MembershipPlans.Include(p => p.Gym).FirstOrDefaultAsync(p => p.Id == dto.MembershipPlanId && p.IsActive)
             ?? throw new KeyNotFoundException("Plan nije pronadjen.");
 
         var user = await _context.Users.FindAsync(dto.UserId)
             ?? throw new KeyNotFoundException("Korisnik nije pronadjen.");
 
-        if (paymentId.HasValue)
-        {
-            var existingMembership = await _context.UserMemberships
-                .Include(m => m.MembershipPlan)
-                .Include(m => m.Gym)
-                .Include(m => m.User)
-                .FirstOrDefaultAsync(m => m.PaymentId == paymentId.Value);
+        var existingMembership = await _context.UserMemberships
+            .Include(m => m.MembershipPlan)
+            .Include(m => m.Gym)
+            .Include(m => m.User)
+            .FirstOrDefaultAsync(m => m.PaymentId == paymentId.Value);
 
-            if (existingMembership is not null)
-            {
-                return ToMembershipDto(existingMembership);
-            }
-        }
+        if (existingMembership is not null)
+            return ToMembershipDto(existingMembership);
 
         var activeMemberships = await _context.UserMemberships
             .Where(m => m.UserId == dto.UserId && m.Status == MembershipStatus.Active)
@@ -140,21 +141,20 @@ public class MembershipService : IMembershipService
             activeMembership.Status = MembershipStatus.Expired;
         }
 
-        var discounted = plan.Price * (1 - dto.DiscountPercent / 100);
         var membership = new UserMembership
         {
-            UserId           = dto.UserId,
-            User             = user,
+            UserId = dto.UserId,
+            User = user,
             MembershipPlanId = plan.Id,
-            MembershipPlan   = plan,
-            GymId            = plan.GymId,
-            Gym              = plan.Gym,
-            StartDate        = now,
-            EndDate          = carryForwardUntil.AddDays(plan.DurationDays),
-            Price            = discounted,
-            DiscountPercent  = dto.DiscountPercent,
-            Status           = MembershipStatus.Active,
-            PaymentId        = paymentId
+            MembershipPlan = plan,
+            GymId = plan.GymId,
+            Gym = plan.Gym,
+            StartDate = now,
+            EndDate = carryForwardUntil.AddDays(plan.DurationDays),
+            Price = plan.Price,
+            DiscountPercent = 0,
+            Status = MembershipStatus.Active,
+            PaymentId = paymentId
         };
 
         _context.UserMemberships.Add(membership);
@@ -172,14 +172,10 @@ public class MembershipService : IMembershipService
             .FirstOrDefaultAsync(m => m.Id == membershipId && m.UserId == userId);
 
         if (membership is null)
-        {
             return null;
-        }
 
         if (membership.Status != MembershipStatus.Active)
-        {
             return ToMembershipDto(membership);
-        }
 
         membership.Status = MembershipStatus.Cancelled;
         await _context.SaveChangesAsync();
@@ -199,9 +195,7 @@ public class MembershipService : IMembershipService
             .ToListAsync();
 
         if (expiredMemberships.Count == 0)
-        {
             return;
-        }
 
         foreach (var membership in expiredMemberships)
         {

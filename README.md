@@ -17,25 +17,24 @@ Seminarski rad iz predmeta Razvoj softvera II. Projekat sadrzi:
 
 ## Preduslovi
 
-- .NET SDK 9 ili noviji
+- .NET SDK 10.0
 - Flutter SDK
 - Docker Desktop
 - Android Studio emulator za Android build provjeru
 
 ## Konfiguracija
 
-Po novim pravilima predaje, osjetljiva konfiguracija nije u `appsettings.json`, nego u `.env`.
-Repo sadrzi samo `.env.example`, a stvarne vrijednosti drze se lokalno u `.env`.
+Osjetljiva konfiguracija se cuva u root `.env` fajlu. Repo sadrzi `.env.example`, a stvarne vrijednosti drzis lokalno u `.env`.
 
-Za docker scenarij:
+Kopiranje example konfiguracije:
 
 ```powershell
-Copy-Item .env.example .env
+Copy-Item .\.env.example .\.env
 ```
 
 Backend i notification servis automatski ucitavaju `.env` iz root foldera projekta.
 
-Flutter klijenti podrzavaju i `--dart-define` konfiguraciju, bez izmjene source koda:
+Flutter klijenti podrzavaju `--dart-define` konfiguraciju bez izmjene source koda:
 
 ```powershell
 flutter run --dart-define=SERVER_BASE_URL=http://localhost:5190
@@ -49,9 +48,7 @@ Podrazumijevane vrijednosti:
 
 ## Pokretanje backend sistema
 
-Najjednostavniji nacin za pokretanje bez izmjene koda:
-
-1. Podigni infrastrukturu i pomocni servis:
+1. Podigni infrastrukturu i notification servis:
 
 ```powershell
 docker compose up -d sqlserver rabbitmq gym.notifications
@@ -63,11 +60,13 @@ docker compose up -d sqlserver rabbitmq gym.notifications
 dotnet run --project .\backend\Gym.Api\Gym.Api.csproj
 ```
 
-Alternativno, mozes pokrenuti sve kroz docker:
+Alternativno, citav sistem mozes podici kroz Docker:
 
 ```powershell
 docker compose up -d
 ```
+
+Docker image-i sada koriste .NET 10, uskladjeno sa target frameworkom projekata (`net10.0`).
 
 Ako koristis potpuno dockerizirani API, baza za Flutter klijente je:
 
@@ -82,7 +81,7 @@ flutter run --dart-define=SERVER_BASE_URL=http://localhost:5000
 
 ## Seed podaci i korisnicki nalozi
 
-Baza se migrira i seed-a pri pokretanju API-ja.
+Baza se seed-a pri pokretanju API-ja.
 
 Pristupni podaci:
 
@@ -90,8 +89,6 @@ Pristupni podaci:
 - Mobilni clan: `member / test`
 - Mobilni trener: `trainer / test`
 - Dodatni mobilni clanovi: `amel / test`, `lejla / test`
-
-Napomena: projekat koristi vise korisnickih uloga, pa su login nalozi imenovani po ulozi ili testnim korisnicima iz seed podataka.
 
 ## Pokretanje desktop aplikacije
 
@@ -131,10 +128,6 @@ flutter clean
 flutter build apk --release
 ```
 
-Ocekivani izlaz:
-
-- `apps/flutter-mobile/build/app/outputs/flutter-apk/app-release.apk`
-
 Windows release:
 
 ```powershell
@@ -143,42 +136,16 @@ flutter clean
 flutter build windows --release
 ```
 
-Ocekivani izlaz:
-
-- `apps/flutter-desktop/build/windows/x64/runner/Release/gym_desktop.exe`
-
-Za pripremu arhive za predaju koristi skriptu:
+Za pripremu arhive za predaju:
 
 ```powershell
 .\resources\scripts\run-backend.ps1
 .\resources\scripts\build-submission.ps1
 ```
 
-## Recommender dokumentacija
-
-Dokumentacija sistema preporuke nalazi se u:
-
-- `resources/docs/recommender-dokumentacija.pdf`
-
-Izvorni markdown za dokumentaciju:
-
-- `resources/docs/recommender-dokumentacija.md`
-
 ## Predaja po novim uputama
 
 - Napravi GitHub `Release` za verziju koju predajes.
 - U release priloge dodaj Android APK i Windows build artefakte.
-- `.env` nemoj commitovati; ako profesor trazi, dostavi ga odvojeno kao zasticenu arhivu prema uputama.
+- `.env` nemoj commitovati.
 - Na DL postavi link na tacan GitHub release, ne samo na repo.
-
-## Napomena za evaluaciju
-
-Projekat je pripremljen tako da se moze pokrenuti bez izmjene source koda. Za promjenu API adrese koristi se iskljucivo konfiguracija (`.env`, `--dart-define`, docker env varijable), ne rucna izmjena fajlova.
-
-## Struktura repozitorija
-
-- `backend/` backend servisi i domena
-- `apps/` Flutter desktop i mobilna aplikacija
-- `resources/docs/` dokumentacija i recommender prilozi
-- `resources/submission/` predajni artefakti za profesora
-- `resources/scripts/` pomocne skripte za pokretanje i pripremu predaje

@@ -50,9 +50,10 @@ public class TrainingSessionsController(ITrainingSessionService sessionService) 
     [Authorize(Roles = "Admin,Trainer")]
     public async Task<IActionResult> Create([FromBody] CreateTrainingSessionDto dto)
     {
-        var trainerId = User.GetUserId();
-        if (!trainerId.HasValue) return Unauthorized();
-        var session = await sessionService.CreateAsync(trainerId.Value, dto);
+        var actorUserId = User.GetUserId();
+        if (!actorUserId.HasValue) return Unauthorized();
+
+        var session = await sessionService.CreateAsync(actorUserId.Value, User.IsInRole("Admin"), dto);
         return CreatedAtAction(nameof(GetById), new { id = session.Id }, session);
     }
 
@@ -60,9 +61,10 @@ public class TrainingSessionsController(ITrainingSessionService sessionService) 
     [Authorize(Roles = "Admin,Trainer")]
     public async Task<IActionResult> Delete(int id)
     {
-        var trainerId = User.GetUserId();
-        if (!trainerId.HasValue) return Unauthorized();
-        await sessionService.DeleteAsync(id, trainerId.Value);
+        var actorUserId = User.GetUserId();
+        if (!actorUserId.HasValue) return Unauthorized();
+
+        await sessionService.DeleteAsync(id, actorUserId.Value, User.IsInRole("Admin"));
         return NoContent();
     }
 
@@ -73,18 +75,16 @@ public class TrainingSessionsController(ITrainingSessionService sessionService) 
         if (!userId.HasValue) return Unauthorized();
 
         var result = await sessionService.ReserveAsync(userId.Value, id);
-        return result is null
-            ? BadRequest(new { message = "Session full or already reserved." })
-            : Ok(result);
+        return Ok(result);
     }
 
-    [HttpDelete("{id:int}/reserve")]
-    public async Task<IActionResult> CancelReservation(int id)
+    [HttpDelete("{sessionId:int}/reserve")]
+    public async Task<IActionResult> CancelReservation(int sessionId, [FromQuery] string? reason = null)
     {
         var userId = User.GetUserId();
         if (!userId.HasValue) return Unauthorized();
 
-        await sessionService.CancelReservationAsync(userId.Value, id);
+        await sessionService.CancelReservationForSessionAsync(userId.Value, sessionId, reason);
         return NoContent();
     }
 

@@ -2,6 +2,8 @@ namespace Gym.Core.Enums;
 
 public enum ReservationStatus
 {
-    Confirmed,
-    Cancelled
+    Pending = 0,
+    Confirmed = 1,
+    Cancelled = 2,
+    Completed = 3
 }
