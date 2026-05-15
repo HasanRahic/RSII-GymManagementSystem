@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
+
 import '../core/constants.dart';
+import '../providers/auth_provider.dart';
+import 'checkins_screen.dart';
 import 'dashboard_screen.dart';
 import 'gyms_screen.dart';
 import 'members_screen.dart';
 import 'memberships_screen.dart';
-import 'checkins_screen.dart';
-import 'trainer_apps_screen.dart';
+import 'reference_screen.dart';
 import 'reports_screen.dart';
+import 'trainer_apps_screen.dart';
 
 class ShellScreen extends StatefulWidget {
   const ShellScreen({super.key});
@@ -23,22 +25,24 @@ class _ShellScreenState extends State<ShellScreen> {
   static const _navItems = [
     _NavItem(Icons.dashboard_outlined, Icons.dashboard, 'Dashboard'),
     _NavItem(Icons.fitness_center_outlined, Icons.fitness_center, 'Teretane'),
-    _NavItem(Icons.people_outline, Icons.people, 'Članovi'),
-    _NavItem(Icons.credit_card_outlined, Icons.credit_card, 'Članarine'),
+    _NavItem(Icons.people_outline, Icons.people, 'Clanovi'),
+    _NavItem(Icons.credit_card_outlined, Icons.credit_card, 'Clanarine'),
     _NavItem(Icons.check_circle_outline, Icons.check_circle, 'Check-in'),
     _NavItem(Icons.assignment_outlined, Icons.assignment, 'Zahtjevi trenera'),
-    _NavItem(Icons.bar_chart_outlined, Icons.bar_chart, 'Izvještaji'),
+    _NavItem(Icons.list_alt_outlined, Icons.list_alt, 'Sifrarnici'),
+    _NavItem(Icons.bar_chart_outlined, Icons.bar_chart, 'Izvjestaji'),
   ];
 
   List<Widget> get _screens => [
-    DashboardScreen(onOpenTrainerApps: () => setState(() => _selected = 5)),
-    GymsScreen(),
-    MembersScreen(),
-    MembershipsScreen(),
-    CheckInsScreen(),
-    TrainerAppsScreen(),
-    ReportsScreen(),
-  ];
+        DashboardScreen(onOpenTrainerApps: () => setState(() => _selected = 5)),
+        const GymsScreen(),
+        const MembersScreen(),
+        const MembershipsScreen(),
+        const CheckInsScreen(),
+        const TrainerAppsScreen(),
+        const ReferenceScreen(),
+        const ReportsScreen(),
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -52,10 +56,10 @@ class _ShellScreenState extends State<ShellScreen> {
             user: auth.user!,
             onSelect: (i) => setState(() => _selected = i),
             onLogout: () async {
+              final navigator = Navigator.of(context);
               await auth.logout();
               if (!mounted) return;
-              // ignore: use_build_context_synchronously
-              Navigator.pushReplacementNamed(context, '/login');
+              navigator.pushReplacementNamed('/login');
             },
           ),
           Expanded(
@@ -76,8 +80,6 @@ class _ShellScreenState extends State<ShellScreen> {
     );
   }
 }
-
-// ─── Sidebar ──────────────────────────────────────────────────────────────────
 
 class _Sidebar extends StatelessWidget {
   final int selected;
@@ -101,7 +103,6 @@ class _Sidebar extends StatelessWidget {
       color: kSidebar,
       child: Column(
         children: [
-          // Logo area
           Container(
             height: 64,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -131,8 +132,6 @@ class _Sidebar extends StatelessWidget {
           ),
           const Divider(color: Colors.white12, height: 1),
           const SizedBox(height: 8),
-
-          // Nav items
           Expanded(
             child: ListView.builder(
               itemCount: items.length,
@@ -148,10 +147,7 @@ class _Sidebar extends StatelessWidget {
               },
             ),
           ),
-
           const Divider(color: Colors.white12, height: 1),
-
-          // User info + logout
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -170,14 +166,19 @@ class _Sidebar extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(user.fullName,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500),
-                          overflow: TextOverflow.ellipsis),
-                      const Text('Admin',
-                          style: TextStyle(color: Colors.white38, fontSize: 11)),
+                      Text(
+                        user.fullName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const Text(
+                        'Admin',
+                        style: TextStyle(color: Colors.white38, fontSize: 11),
+                      ),
                     ],
                   ),
                 ),
@@ -236,7 +237,8 @@ class _SidebarItem extends StatelessWidget {
                   style: TextStyle(
                     color: isSelected ? Colors.white : Colors.white70,
                     fontSize: 14,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    fontWeight:
+                        isSelected ? FontWeight.w600 : FontWeight.normal,
                   ),
                 ),
               ],
@@ -247,8 +249,6 @@ class _SidebarItem extends StatelessWidget {
     );
   }
 }
-
-// ─── Top bar ──────────────────────────────────────────────────────────────────
 
 class _TopBar extends StatelessWidget {
   final String title;
@@ -268,16 +268,15 @@ class _TopBar extends StatelessWidget {
         child: Text(
           title,
           style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1E293B)),
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF1E293B),
+          ),
         ),
       ),
     );
   }
 }
-
-// ─── Helper ───────────────────────────────────────────────────────────────────
 
 class _NavItem {
   final IconData icon;

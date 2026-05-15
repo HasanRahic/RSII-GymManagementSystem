@@ -380,3 +380,65 @@ class ReferenceItem {
         name: (j['name'] ?? '').toString(),
       );
 }
+
+class CountryModel {
+  final int id;
+  final String name;
+  final String code;
+
+  CountryModel({
+    required this.id,
+    required this.name,
+    required this.code,
+  });
+
+  factory CountryModel.fromJson(Map<String, dynamic> j) => CountryModel(
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        name: (j['name'] ?? '').toString(),
+        code: (j['code'] ?? '').toString(),
+      );
+}
+
+class CityReferenceModel {
+  final int id;
+  final String name;
+  final String? postalCode;
+  final int countryId;
+  final String countryName;
+
+  CityReferenceModel({
+    required this.id,
+    required this.name,
+    required this.postalCode,
+    required this.countryId,
+    required this.countryName,
+  });
+
+  factory CityReferenceModel.fromJson(Map<String, dynamic> j) =>
+      CityReferenceModel(
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        name: (j['name'] ?? '').toString(),
+        postalCode: j['postalCode']?.toString(),
+        countryId: (j['countryId'] as num?)?.toInt() ?? 0,
+        countryName: (j['countryName'] ?? '').toString(),
+      );
+}
+
+class TrainingTypeReferenceModel {
+  final int id;
+  final String name;
+  final String? description;
+
+  TrainingTypeReferenceModel({
+    required this.id,
+    required this.name,
+    required this.description,
+  });
+
+  factory TrainingTypeReferenceModel.fromJson(Map<String, dynamic> j) =>
+      TrainingTypeReferenceModel(
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        name: (j['name'] ?? '').toString(),
+        description: j['description']?.toString(),
+      );
+}

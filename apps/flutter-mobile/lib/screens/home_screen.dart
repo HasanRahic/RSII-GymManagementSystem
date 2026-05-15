@@ -12,6 +12,7 @@ import '../services/api_services.dart';
 import 'checkin_history_screen.dart';
 import 'checkin_screen.dart';
 import 'my_memberships_screen.dart';
+import 'notifications_screen.dart';
 import 'stripe_checkout_screen.dart';
 import 'trainer_application_screen.dart';
 
@@ -5735,11 +5736,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
+               const SizedBox(height: 14),
+               Row(
+                 children: [
+                   Expanded(
+                     child: FilledButton.icon(
                       onPressed: () =>
                           _openEditProfileDialog(context.read<AuthProvider>()),
                       icon: const Icon(Icons.edit),
@@ -5754,13 +5755,28 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       icon: const Icon(Icons.lock_outline),
                       label: const Text('Lozinka'),
+                      ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const NotificationsScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.notifications_outlined),
+                    label: const Text('Notifikacije'),
                   ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
-        ),
         const SizedBox(height: 14),
         Row(
           children: [

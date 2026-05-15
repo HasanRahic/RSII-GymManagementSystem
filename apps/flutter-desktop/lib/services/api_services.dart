@@ -79,6 +79,11 @@ class MembershipService {
     return MembershipPlan.fromJson(data);
   }
 
+  static Future<MembershipPlan> updatePlan(int id, Map<String, dynamic> dto) async {
+    final data = await ApiClient.put('/memberships/plans/$id', dto);
+    return MembershipPlan.fromJson(data);
+  }
+
   static Future<List<UserMembership>> getAllMemberships() async {
     final data = await ApiClient.get('/memberships') as List;
     return data.map((e) => UserMembership.fromJson(e)).toList();
@@ -149,9 +154,67 @@ class ReportService {
 // ─── Reference Service ────────────────────────────────────────────────────────
 
 class ReferenceService {
+  static Future<List<CountryModel>> getCountries() async {
+    final data = await ApiClient.get('/reference/countries') as List;
+    return data.map((e) => CountryModel.fromJson(e)).toList();
+  }
+
   static Future<List<ReferenceItem>> getCities({int? countryId}) async {
     final q = countryId != null ? '?countryId=$countryId' : '';
     final data = await ApiClient.get('/reference/cities$q') as List;
     return data.map((e) => ReferenceItem.fromJson(e)).toList();
+  }
+
+  static Future<List<CityReferenceModel>> getCityDetails({int? countryId}) async {
+    final q = countryId != null ? '?countryId=$countryId' : '';
+    final data = await ApiClient.get('/reference/cities$q') as List;
+    return data.map((e) => CityReferenceModel.fromJson(e)).toList();
+  }
+
+  static Future<List<TrainingTypeReferenceModel>> getTrainingTypes() async {
+    final data = await ApiClient.get('/reference/training-types') as List;
+    return data.map((e) => TrainingTypeReferenceModel.fromJson(e)).toList();
+  }
+
+  static Future<CountryModel> createCountry(Map<String, dynamic> dto) async {
+    final data = await ApiClient.post('/reference/countries', dto);
+    return CountryModel.fromJson(data);
+  }
+
+  static Future<CountryModel> updateCountry(int id, Map<String, dynamic> dto) async {
+    final data = await ApiClient.put('/reference/countries/$id', dto);
+    return CountryModel.fromJson(data);
+  }
+
+  static Future<void> deleteCountry(int id) async {
+    await ApiClient.delete('/reference/countries/$id');
+  }
+
+  static Future<CityReferenceModel> createCity(Map<String, dynamic> dto) async {
+    final data = await ApiClient.post('/reference/cities', dto);
+    return CityReferenceModel.fromJson(data);
+  }
+
+  static Future<CityReferenceModel> updateCity(int id, Map<String, dynamic> dto) async {
+    final data = await ApiClient.put('/reference/cities/$id', dto);
+    return CityReferenceModel.fromJson(data);
+  }
+
+  static Future<void> deleteCity(int id) async {
+    await ApiClient.delete('/reference/cities/$id');
+  }
+
+  static Future<TrainingTypeReferenceModel> createTrainingType(Map<String, dynamic> dto) async {
+    final data = await ApiClient.post('/reference/training-types', dto);
+    return TrainingTypeReferenceModel.fromJson(data);
+  }
+
+  static Future<TrainingTypeReferenceModel> updateTrainingType(int id, Map<String, dynamic> dto) async {
+    final data = await ApiClient.put('/reference/training-types/$id', dto);
+    return TrainingTypeReferenceModel.fromJson(data);
+  }
+
+  static Future<void> deleteTrainingType(int id) async {
+    await ApiClient.delete('/reference/training-types/$id');
   }
 }

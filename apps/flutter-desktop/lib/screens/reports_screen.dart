@@ -1,10 +1,12 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../core/constants.dart';
 import '../models/models.dart';
@@ -120,87 +122,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (_rows.isEmpty) return;
 
     try {
-      final activeNow = _rows.where((r) => r.checkOutTime == null).length;
-      final finished = _rows.where((r) => r.durationMinutes != null).toList();
-      final avgDuration = finished.isEmpty
-          ? 0
-          : (finished
-                      .map((e) => e.durationMinutes!)
-                      .reduce((a, b) => a + b) /
-                  finished.length)
-              .round();
-
-      final document = pw.Document();
-      final revenueLabel = NumberFormat('#,##0.00', 'bs').format(_revenue);
-
-      document.addPage(
-        pw.MultiPage(
-          build: (context) => [
-            pw.Text(
-              'Gym Management Report',
-              style: pw.TextStyle(
-                fontSize: 22,
-                fontWeight: pw.FontWeight.bold,
-              ),
-            ),
-            pw.SizedBox(height: 8),
-            pw.Text(
-              'Period: ${DateFormat('dd.MM.yyyy').format(_from)} - ${DateFormat('dd.MM.yyyy').format(_to)}',
-            ),
-            pw.Text(
-              'Teretana: ${_gymId == null ? 'Sve teretane' : _gyms.firstWhere((gym) => gym.id == _gymId).name}',
-            ),
-            pw.SizedBox(height: 16),
-            pw.Wrap(
-              spacing: 16,
-              runSpacing: 8,
-              children: [
-                _pdfMetric('Prihod', '$revenueLabel KM'),
-                _pdfMetric('Ukupno check-in', '${_rows.length}'),
-                _pdfMetric('Aktivni trenutno', '$activeNow'),
-                _pdfMetric('Prosjecno trajanje', '$avgDuration min'),
-              ],
-            ),
-            pw.SizedBox(height: 18),
-            pw.TableHelper.fromTextArray(
-              headers: const [
-                'Clan',
-                'Teretana',
-                'Dolazak',
-                'Odlazak',
-                'Trajanje',
-              ],
-              data: _rows
-                  .map(
-                    (row) => [
-                      row.userFullName,
-                      row.gymName,
-                      _fmtDt(row.checkInTime),
-                      row.checkOutTime == null ? '-' : _fmtDt(row.checkOutTime!),
-                      row.durationMinutes == null
-                          ? 'Aktivan'
-                          : '${row.durationMinutes} min',
-                    ],
-                  )
-                  .toList(),
-              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-              headerDecoration: const pw.BoxDecoration(
-                color: PdfColor.fromInt(0xFFE2E8F0),
-              ),
-              cellHeight: 24,
-              cellAlignments: {
-                0: pw.Alignment.centerLeft,
-                1: pw.Alignment.centerLeft,
-                2: pw.Alignment.centerLeft,
-                3: pw.Alignment.centerLeft,
-                4: pw.Alignment.centerLeft,
-              },
-            ),
-          ],
-        ),
-      );
-
-      final bytes = await document.save();
+      final bytes = await _buildCheckInPdfBytes();
       final file = File(
         '${_exportDirectory().path}\\${_buildExportBaseName()}.pdf',
       );
@@ -211,6 +133,38 @@ class _ReportsScreenState extends State<ReportsScreen> {
     } catch (e) {
       if (!mounted) return;
       _showExportMessage('PDF export nije uspio: $e', isError: true);
+    }
+  }
+
+  Future<void> _exportMembershipRevenuePdf() async {
+    try {
+      final bytes = await _buildMembershipRevenuePdfBytes();
+      final file = File(
+        '${_exportDirectory().path}\\${_buildExportBaseName()}_memberships.pdf',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+
+      if (!mounted) return;
+      _showExportMessage('PDF izvjestaj o clanarina sacuvan: ${file.path}');
+    } catch (e) {
+      if (!mounted) return;
+      _showExportMessage('Export izvjestaja o clanarina nije uspio: $e',
+          isError: true);
+    }
+  }
+
+  Future<void> _printPdf() async {
+    if (_rows.isEmpty) return;
+
+    try {
+      final bytes = await _buildCheckInPdfBytes();
+      await Printing.layoutPdf(
+        onLayout: (_) async => bytes,
+        name: '${_buildExportBaseName()}_checkins',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showExportMessage('Print nije uspio: $e', isError: true);
     }
   }
 
@@ -271,6 +225,156 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ],
       ),
     );
+  }
+
+  Future<Uint8List> _buildCheckInPdfBytes() async {
+    final activeNow = _rows.where((r) => r.checkOutTime == null).length;
+    final finished = _rows.where((r) => r.durationMinutes != null).toList();
+    final avgDuration = finished.isEmpty
+        ? 0
+        : (finished.map((e) => e.durationMinutes!).reduce((a, b) => a + b) /
+                finished.length)
+            .round();
+    final revenueLabel = NumberFormat('#,##0.00', 'bs').format(_revenue);
+    final document = pw.Document();
+
+    document.addPage(
+      pw.MultiPage(
+        build: (context) => [
+          pw.Text(
+            'Check-in izvjestaj',
+            style: pw.TextStyle(
+              fontSize: 22,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Text(
+            'Period: ${DateFormat('dd.MM.yyyy').format(_from)} - ${DateFormat('dd.MM.yyyy').format(_to)}',
+          ),
+          pw.Text(
+            'Teretana: ${_gymId == null ? 'Sve teretane' : _gyms.firstWhere((gym) => gym.id == _gymId).name}',
+          ),
+          pw.SizedBox(height: 16),
+          pw.Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            children: [
+              _pdfMetric('Prihod', '$revenueLabel KM'),
+              _pdfMetric('Ukupno check-in', '${_rows.length}'),
+              _pdfMetric('Aktivni trenutno', '$activeNow'),
+              _pdfMetric('Prosjecno trajanje', '$avgDuration min'),
+            ],
+          ),
+          pw.SizedBox(height: 18),
+          pw.TableHelper.fromTextArray(
+            headers: const ['Clan', 'Teretana', 'Dolazak', 'Odlazak', 'Trajanje'],
+            data: _rows
+                .map(
+                  (row) => [
+                    row.userFullName,
+                    row.gymName,
+                    _fmtDt(row.checkInTime),
+                    row.checkOutTime == null ? '-' : _fmtDt(row.checkOutTime!),
+                    row.durationMinutes == null
+                        ? 'Aktivan'
+                        : '${row.durationMinutes} min',
+                  ],
+                )
+                .toList(),
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            headerDecoration: const pw.BoxDecoration(
+              color: PdfColor.fromInt(0xFFE2E8F0),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return document.save();
+  }
+
+  Future<Uint8List> _buildMembershipRevenuePdfBytes() async {
+    final memberships = await MembershipService.getAllMemberships();
+    final filtered = memberships.where((membership) {
+      final start = DateTime.tryParse(membership.startDate)?.toLocal();
+      if (start == null) return false;
+      final inGym = _gymId == null || membership.gymId == _gymId;
+      final inRange =
+          !start.isBefore(DateTime(_from.year, _from.month, _from.day)) &&
+              !start.isAfter(
+                DateTime(_to.year, _to.month, _to.day, 23, 59, 59),
+              );
+      return inGym && inRange;
+    }).toList();
+
+    final totalRevenue =
+        filtered.fold<double>(0, (sum, item) => sum + item.price);
+    final document = pw.Document();
+
+    document.addPage(
+      pw.MultiPage(
+        build: (context) => [
+          pw.Text(
+            'Izvjestaj o clanarina i prihodima',
+            style: pw.TextStyle(
+              fontSize: 22,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Text(
+            'Period: ${DateFormat('dd.MM.yyyy').format(_from)} - ${DateFormat('dd.MM.yyyy').format(_to)}',
+          ),
+          pw.Text(
+            'Teretana: ${_gymId == null ? 'Sve teretane' : _gyms.firstWhere((gym) => gym.id == _gymId).name}',
+          ),
+          pw.SizedBox(height: 16),
+          pw.Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            children: [
+              _pdfMetric('Broj clanarina', '${filtered.length}'),
+              _pdfMetric(
+                'Prihod od clanarina',
+                '${NumberFormat('#,##0.00', 'bs').format(totalRevenue)} KM',
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 18),
+          pw.TableHelper.fromTextArray(
+            headers: const [
+              'Clan',
+              'Teretana',
+              'Plan',
+              'Pocetak',
+              'Istek',
+              'Iznos',
+              'Status',
+            ],
+            data: filtered
+                .map(
+                  (item) => [
+                    item.fullName,
+                    item.gymName,
+                    item.planName,
+                    _fmtDt(item.startDate),
+                    _fmtDt(item.endDate),
+                    '${NumberFormat('#,##0.00', 'bs').format(item.price)} KM',
+                    item.statusLabel,
+                  ],
+                )
+                .toList(),
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            headerDecoration: const pw.BoxDecoration(
+              color: PdfColor.fromInt(0xFFE2E8F0),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return document.save();
   }
 
   @override
@@ -438,7 +542,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
         OutlinedButton.icon(
           onPressed: _loading || _rows.isEmpty ? null : _exportPdf,
           icon: const Icon(Icons.picture_as_pdf_outlined),
-          label: const Text('Export PDF'),
+          label: const Text('PDF check-in'),
+        ),
+        OutlinedButton.icon(
+          onPressed: _loading ? null : _exportMembershipRevenuePdf,
+          icon: const Icon(Icons.receipt_long_outlined),
+          label: const Text('PDF clanarine'),
+        ),
+        OutlinedButton.icon(
+          onPressed: _loading || _rows.isEmpty ? null : _printPdf,
+          icon: const Icon(Icons.print_outlined),
+          label: const Text('Print'),
         ),
       ],
     );
