@@ -68,8 +68,17 @@ class UserService {
 // ─── Membership Service ───────────────────────────────────────────────────────
 
 class MembershipService {
-  static Future<List<MembershipPlan>> getPlans({int? gymId}) async {
-    final q = gymId != null ? '?gymId=$gymId' : '';
+  static Future<List<MembershipPlan>> getPlans({
+    int? gymId,
+    int page = 1,
+    int pageSize = 200,
+  }) async {
+    final params = <String>[
+      'page=$page',
+      'pageSize=$pageSize',
+      if (gymId != null) 'gymId=$gymId',
+    ];
+    final q = '?${params.join('&')}';
     final data = await ApiClient.get('/memberships/plans$q') as List;
     return data.map((e) => MembershipPlan.fromJson(e)).toList();
   }
@@ -84,8 +93,12 @@ class MembershipService {
     return MembershipPlan.fromJson(data);
   }
 
-  static Future<List<UserMembership>> getAllMemberships() async {
-    final data = await ApiClient.get('/memberships') as List;
+  static Future<List<UserMembership>> getAllMemberships({
+    int page = 1,
+    int pageSize = 500,
+  }) async {
+    final data =
+        await ApiClient.get('/memberships?page=$page&pageSize=$pageSize') as List;
     return data.map((e) => UserMembership.fromJson(e)).toList();
   }
 
@@ -98,9 +111,18 @@ class MembershipService {
 // ─── Check-in Service ─────────────────────────────────────────────────────────
 
 class CheckInService {
-  static Future<List<CheckInModel>> getGymCheckIns(int gymId,
-      {String? date}) async {
-    final q = date != null ? '?date=$date' : '';
+  static Future<List<CheckInModel>> getGymCheckIns(
+    int gymId, {
+    String? date,
+    int page = 1,
+    int pageSize = 200,
+  }) async {
+    final params = <String>[
+      'page=$page',
+      'pageSize=$pageSize',
+      if (date != null) 'date=$date',
+    ];
+    final q = '?${params.join('&')}';
     final data = await ApiClient.get('/checkins/gym/$gymId$q') as List;
     return data.map((e) => CheckInModel.fromJson(e)).toList();
   }

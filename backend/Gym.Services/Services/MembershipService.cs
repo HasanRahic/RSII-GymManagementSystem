@@ -13,12 +13,19 @@ public class MembershipService : IMembershipService
 
     public MembershipService(GymDbContext context) => _context = context;
 
-    public async Task<IEnumerable<MembershipPlanDto>> GetPlansAsync(int? gymId)
+    public async Task<IEnumerable<MembershipPlanDto>> GetPlansAsync(int? gymId, int page = 1, int pageSize = 100)
     {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+
         var query = _context.MembershipPlans.AsNoTracking().AsQueryable();
         if (gymId.HasValue) query = query.Where(p => p.GymId == gymId.Value);
 
         return await query
+            .OrderBy(p => p.Gym.Name)
+            .ThenBy(p => p.Name)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(p => new MembershipPlanDto(
                 p.Id, p.Name, p.Description, p.DurationDays, p.Price, p.IsActive, p.GymId, p.Gym.Name))
             .ToListAsync();
@@ -55,21 +62,29 @@ public class MembershipService : IMembershipService
         return ToPlanDto(plan);
     }
 
-    public async Task<IEnumerable<UserMembershipDto>> GetAllMembershipsAsync()
+    public async Task<IEnumerable<UserMembershipDto>> GetAllMembershipsAsync(int page = 1, int pageSize = 100)
     {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+
         var memberships = await _context.UserMemberships
             .AsNoTracking()
             .Include(m => m.MembershipPlan)
             .Include(m => m.Gym)
             .Include(m => m.User)
             .OrderByDescending(m => m.StartDate)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync();
 
         return memberships.Select(ToMembershipDto);
     }
 
-    public async Task<IEnumerable<UserMembershipDto>> GetUserMembershipsAsync(int userId)
+    public async Task<IEnumerable<UserMembershipDto>> GetUserMembershipsAsync(int userId, int page = 1, int pageSize = 100)
     {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+
         await ExpireEndedMembershipsAsync(userId);
 
         var memberships = await _context.UserMemberships
@@ -79,6 +94,8 @@ public class MembershipService : IMembershipService
             .Include(m => m.User)
             .Where(m => m.UserId == userId)
             .OrderByDescending(m => m.StartDate)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync();
 
         return memberships.Select(ToMembershipDto);

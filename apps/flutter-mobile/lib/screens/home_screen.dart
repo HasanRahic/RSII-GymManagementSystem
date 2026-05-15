@@ -15,6 +15,7 @@ import 'my_memberships_screen.dart';
 import 'notifications_screen.dart';
 import 'stripe_checkout_screen.dart';
 import 'trainer_application_screen.dart';
+import 'widgets/home_screen_sections.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -4680,15 +4681,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 18),
           const _SectionTitle(icon: '✨', title: 'Recommended For You'),
           const SizedBox(height: 6),
-          const Text(
-            'Na osnovu vaših preferencija: Yoga, Pilates',
-            style: TextStyle(color: Color(0xFF8A94A8)),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            recommendationReason,
-            style: const TextStyle(color: Color(0xFF8A94A8)),
-          ),
+          HomeRecommendationSectionHeader(summary: recommendationReason),
           const SizedBox(height: 4),
           if (_loadingDiscoveryData && displayedRecommendedForYou.isEmpty)
             const Padding(
@@ -5737,43 +5730,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
                const SizedBox(height: 14),
-               Row(
-                 children: [
-                   Expanded(
-                     child: FilledButton.icon(
-                      onPressed: () =>
-                          _openEditProfileDialog(context.read<AuthProvider>()),
-                      icon: const Icon(Icons.edit),
-                      label: const Text('Uredi profil'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openChangePasswordDialog(
-                        context.read<AuthProvider>(),
-                      ),
-                      icon: const Icon(Icons.lock_outline),
-                      label: const Text('Lozinka'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const NotificationsScreen(),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.notifications_outlined),
-                    label: const Text('Notifikacije'),
-                  ),
-                ),
+               HomeProfileActions(
+                 onEditProfile: () =>
+                     _openEditProfileDialog(context.read<AuthProvider>()),
+                 onChangePassword: () =>
+                     _openChangePasswordDialog(context.read<AuthProvider>()),
+                 onNotifications: () {
+                   Navigator.of(context).push(
+                     MaterialPageRoute<void>(
+                       builder: (_) => const NotificationsScreen(),
+                     ),
+                   );
+                 },
+               ),
               ],
             ),
           ),

@@ -73,8 +73,11 @@ public class CheckInService : ICheckInService
         return await LoadDto(checkIn.Id);
     }
 
-    public async Task<IEnumerable<CheckInDto>> GetUserHistoryAsync(int userId, DateTime? from, DateTime? to)
+    public async Task<IEnumerable<CheckInDto>> GetUserHistoryAsync(int userId, DateTime? from, DateTime? to, int page = 1, int pageSize = 100)
     {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+
         var query = _context.CheckIns
             .Include(c => c.User)
             .Include(c => c.Gym)
@@ -83,12 +86,19 @@ public class CheckInService : ICheckInService
         if (from.HasValue) query = query.Where(c => c.CheckInTime >= from.Value);
         if (to.HasValue) query = query.Where(c => c.CheckInTime <= to.Value);
 
-        var list = await query.OrderByDescending(c => c.CheckInTime).ToListAsync();
+        var list = await query
+            .OrderByDescending(c => c.CheckInTime)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
         return list.Select(ToDto);
     }
 
-    public async Task<IEnumerable<CheckInDto>> GetGymCheckInsAsync(int gymId, DateTime? date)
+    public async Task<IEnumerable<CheckInDto>> GetGymCheckInsAsync(int gymId, DateTime? date, int page = 1, int pageSize = 100)
     {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+
         var query = _context.CheckIns
             .Include(c => c.User)
             .Include(c => c.Gym)
@@ -97,7 +107,11 @@ public class CheckInService : ICheckInService
         if (date.HasValue)
             query = query.Where(c => c.CheckInTime.Date == date.Value.Date);
 
-        var list = await query.OrderByDescending(c => c.CheckInTime).ToListAsync();
+        var list = await query
+            .OrderByDescending(c => c.CheckInTime)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
         return list.Select(ToDto);
     }
 

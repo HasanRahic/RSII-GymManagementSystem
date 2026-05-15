@@ -131,6 +131,11 @@ public class GymDbContext : DbContext
         {
             e.Property(r => r.Status).HasConversion<string>();
 
+            e.HasOne(r => r.CancelledByUser)
+             .WithMany()
+             .HasForeignKey(r => r.CancelledByUserId)
+             .OnDelete(DeleteBehavior.Restrict);
+
             e.HasOne(r => r.Payment)
              .WithOne(p => p.SessionReservation)
              .HasForeignKey<SessionReservation>(r => r.PaymentId)

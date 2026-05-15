@@ -52,7 +52,10 @@ public record SessionReservationDto(
     string SessionTitle,
     DateTime SessionDate,
     ReservationStatus Status,
-    DateTime ReservedAt
+    DateTime ReservedAt,
+    DateTime? CancelledAt,
+    int? CancelledByUserId,
+    string? CancellationReason
 );
 
 public record RecommendedGymDto(

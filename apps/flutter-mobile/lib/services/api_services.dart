@@ -24,14 +24,24 @@ class GymService {
 }
 
 class MembershipService {
-  static Future<List<MembershipPlanModel>> getPlans({int? gymId}) async {
-    final suffix = gymId == null ? '' : '?gymId=$gymId';
+  static Future<List<MembershipPlanModel>> getPlans({
+    int? gymId,
+    int page = 1,
+    int pageSize = 100,
+  }) async {
+    final query = <String>['page=$page', 'pageSize=$pageSize'];
+    if (gymId != null) query.add('gymId=$gymId');
+    final suffix = '?${query.join('&')}';
     final data = await ApiClient.get('/memberships/plans$suffix') as List;
     return data.map((e) => MembershipPlanModel.fromJson(e)).toList();
   }
 
-  static Future<List<UserMembership>> getMyMemberships() async {
-    final data = await ApiClient.get('/memberships/my') as List;
+  static Future<List<UserMembership>> getMyMemberships({
+    int page = 1,
+    int pageSize = 100,
+  }) async {
+    final data =
+        await ApiClient.get('/memberships/my?page=$page&pageSize=$pageSize') as List;
     return data.map((e) => UserMembership.fromJson(e)).toList();
   }
 
@@ -235,8 +245,13 @@ class TrainingSessionService {
     return data.map((e) => TrainingSessionModel.fromJson(e)).toList();
   }
 
-  static Future<List<TrainingSessionModel>> getMyPaidGroupSchedule() async {
-    final data = await ApiClient.get('/training-sessions/my-paid-group-schedule') as List;
+  static Future<List<TrainingSessionModel>> getMyPaidGroupSchedule({
+    int page = 1,
+    int pageSize = 100,
+  }) async {
+    final data = await ApiClient.get(
+      '/training-sessions/my-paid-group-schedule?page=$page&pageSize=$pageSize',
+    ) as List;
     return data.map((e) => TrainingSessionModel.fromJson(e)).toList();
   }
 
@@ -341,10 +356,14 @@ class CheckInService {
   static Future<List<CheckInModel>> getMyHistory({
     DateTime? from,
     DateTime? to,
+    int page = 1,
+    int pageSize = 100,
   }) async {
     final query = <String>[];
     if (from != null) query.add('from=${Uri.encodeComponent(from.toIso8601String())}');
     if (to != null) query.add('to=${Uri.encodeComponent(to.toIso8601String())}');
+    query.add('page=$page');
+    query.add('pageSize=$pageSize');
     final suffix = query.isEmpty ? '' : '?${query.join('&')}';
 
     final data = await ApiClient.get('/checkins/my$suffix') as List;

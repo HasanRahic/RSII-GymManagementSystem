@@ -17,8 +17,8 @@ public class MembershipsController(
 {
     [HttpGet("plans")]
     [AllowAnonymous]
-    public async Task<IActionResult> GetPlans([FromQuery] int? gymId)
-        => Ok(await membershipService.GetPlansAsync(gymId));
+    public async Task<IActionResult> GetPlans([FromQuery] int? gymId, [FromQuery] int page = 1, [FromQuery] int pageSize = 100)
+        => Ok(await membershipService.GetPlansAsync(gymId, page, pageSize));
 
     [HttpPost("plans")]
     [Authorize(Roles = "Admin")]
@@ -35,19 +35,19 @@ public class MembershipsController(
 
     [HttpGet]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> GetAll([FromQuery] int? userId)
+    public async Task<IActionResult> GetAll([FromQuery] int? userId, [FromQuery] int page = 1, [FromQuery] int pageSize = 100)
         => Ok(userId.HasValue
-            ? await membershipService.GetUserMembershipsAsync(userId.Value)
-            : await membershipService.GetAllMembershipsAsync());
+            ? await membershipService.GetUserMembershipsAsync(userId.Value, page, pageSize)
+            : await membershipService.GetAllMembershipsAsync(page, pageSize));
 
     [HttpGet("my")]
-    public async Task<IActionResult> GetMine()
+    public async Task<IActionResult> GetMine([FromQuery] int page = 1, [FromQuery] int pageSize = 100)
     {
         var userId = User.GetUserId();
         if (!userId.HasValue) return Unauthorized();
 
         await stripePaymentSyncService.ReconcileLatestMembershipPaymentsAsync(userId.Value);
-        return Ok(await membershipService.GetUserMembershipsAsync(userId.Value));
+        return Ok(await membershipService.GetUserMembershipsAsync(userId.Value, page, pageSize));
     }
 
     [HttpGet("my/active")]

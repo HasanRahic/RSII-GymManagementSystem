@@ -170,6 +170,11 @@ public class TrainingSessionService : ITrainingSessionService
             throw new InvalidOperationException("Nije dozvoljeno otkazivanje zavrsene sesije.");
 
         ApplyReservationTransition(reservation, ReservationStatus.Cancelled);
+        reservation.CancelledAt = DateTime.UtcNow;
+        reservation.CancelledByUserId = userId;
+        reservation.CancellationReason = string.IsNullOrWhiteSpace(cancellationReason)
+            ? "Korisnik je otkazao rezervaciju."
+            : cancellationReason.Trim();
         await _context.SaveChangesAsync();
 
         await _notificationService.CreateAsync(new CreateNotificationDto(
@@ -195,7 +200,7 @@ public class TrainingSessionService : ITrainingSessionService
             .Select(r => new SessionReservationDto(
                 r.Id, r.UserId, $"{r.User.FirstName} {r.User.LastName}",
                 r.TrainingSessionId, r.TrainingSession.Title, r.TrainingSession.Date,
-                r.Status, r.ReservedAt))
+                r.Status, r.ReservedAt, r.CancelledAt, r.CancelledByUserId, r.CancellationReason))
             .ToListAsync();
     }
 
@@ -206,10 +211,8 @@ public class TrainingSessionService : ITrainingSessionService
 
         var now = DateTime.UtcNow;
 
-        var paidGroupPrograms = await _context.Payments
+        var paidGroupPrograms = _context.Payments
             .AsNoTracking()
-            .Include(p => p.SessionReservation)
-            .ThenInclude(r => r!.TrainingSession)
             .Where(p =>
                 p.UserId == userId &&
                 p.Type == PaymentType.Session &&
@@ -227,46 +230,33 @@ public class TrainingSessionService : ITrainingSessionService
                 p.SessionReservation.TrainingSession.StartTime,
                 p.SessionReservation.TrainingSession.EndTime,
             })
-            .Distinct()
-            .ToListAsync();
+            .Distinct();
 
-        if (paidGroupPrograms.Count == 0)
-            return Enumerable.Empty<TrainingSessionDto>();
-
-        var programKeys = paidGroupPrograms
-            .Select(pg => BuildProgramKey(
-                pg.GymId,
-                pg.TrainerId,
-                pg.TrainingTypeId,
-                pg.Title,
-                pg.StartTime,
-                pg.EndTime))
-            .ToHashSet();
-
-        var candidateSessions = await _context.TrainingSessions
+        return await _context.TrainingSessions
             .AsNoTracking()
-            .Include(s => s.Trainer)
-            .Include(s => s.Gym)
-            .Include(s => s.TrainingType)
-            .Include(s => s.Reservations)
-            .Where(s => s.IsActive && s.Type == SessionType.Group && s.Date >= now.Date)
-            .ToListAsync();
-
-        var sessions = candidateSessions
-            .Where(s => programKeys.Contains(BuildProgramKey(
-                s.GymId,
-                s.TrainerId,
-                s.TrainingTypeId,
-                s.Title,
-                s.StartTime,
-                s.EndTime)))
+            .Where(s =>
+                s.IsActive &&
+                s.Type == SessionType.Group &&
+                s.Date >= now.Date &&
+                paidGroupPrograms.Any(pg =>
+                    pg.GymId == s.GymId &&
+                    pg.TrainerId == s.TrainerId &&
+                    pg.TrainingTypeId == s.TrainingTypeId &&
+                    pg.Title == s.Title &&
+                    pg.StartTime == s.StartTime &&
+                    pg.EndTime == s.EndTime))
             .OrderBy(s => s.Date)
             .ThenBy(s => s.StartTime)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .ToList();
-
-        return sessions.Select(ToDto);
+            .Select(s => new TrainingSessionDto(
+                s.Id, s.Title, s.Description, s.Type, s.Date, s.StartTime, s.EndTime,
+                s.MaxParticipants,
+                s.Reservations.Count(r => r.Status == ReservationStatus.Confirmed),
+                s.Price, s.IsActive,
+                s.TrainerId, $"{s.Trainer.FirstName} {s.Trainer.LastName}",
+                s.GymId, s.Gym.Name, s.TrainingTypeId, s.TrainingType.Name))
+            .ToListAsync();
     }
 
     public async Task<IEnumerable<RecommendedGymDto>> GetRecommendedGymsAsync(int userId, string? city, int? trainingTypeId)
@@ -408,18 +398,33 @@ public class TrainingSessionService : ITrainingSessionService
         var normalizedSearch = search?.Trim().ToLowerInvariant();
         var now = DateTime.UtcNow;
 
-        var sessions = await _context.TrainingSessions
+        var sessionRows = await _context.TrainingSessions
             .AsNoTracking()
-            .Include(s => s.Trainer)
-            .ThenInclude(t => t.City)
-            .Include(s => s.Gym)
-            .ThenInclude(g => g.City)
-            .Include(s => s.TrainingType)
-            .Include(s => s.Reservations)
-            .Where(s => s.IsActive && (!trainingTypeId.HasValue || s.TrainingTypeId == trainingTypeId.Value))
+            .Where(s =>
+                s.IsActive &&
+                (!trainingTypeId.HasValue || s.TrainingTypeId == trainingTypeId.Value) &&
+                (string.IsNullOrWhiteSpace(normalizedCity) || s.Gym.City.Name.ToLower() == normalizedCity))
+            .Select(s => new TrainerProfileSessionRow(
+                s.TrainerId,
+                s.Trainer.FirstName,
+                s.Trainer.LastName,
+                s.Trainer.PhoneNumber,
+                s.Trainer.Email,
+                s.Trainer.City != null ? s.Trainer.City.Name : null,
+                s.Gym.Name,
+                s.Gym.City.Name,
+                s.TrainingType.Name,
+                s.Type,
+                s.Date,
+                s.StartTime,
+                s.MaxParticipants,
+                s.Reservations.Count(r => r.Status == ReservationStatus.Confirmed)))
             .ToListAsync();
 
-        var trainerIds = sessions.Select(s => s.TrainerId).Distinct().ToList();
+        if (sessionRows.Count == 0)
+            return Enumerable.Empty<TrainerProfileDto>();
+
+        var trainerIds = sessionRows.Select(s => s.TrainerId).Distinct().ToList();
         var trainerApplications = await _context.TrainerApplications
             .AsNoTracking()
             .Where(a => trainerIds.Contains(a.UserId))
@@ -429,32 +434,32 @@ public class TrainingSessionService : ITrainingSessionService
 
         var applicationByTrainerId = trainerApplications.ToDictionary(a => a.UserId);
 
-        var profiles = sessions
-            .GroupBy(s => s.TrainerId)
+        return sessionRows
+            .GroupBy(s => new
+            {
+                s.TrainerId,
+                s.TrainerFirstName,
+                s.TrainerLastName,
+                s.PhoneNumber,
+                s.Email,
+                s.TrainerCityName
+            })
             .Select(group =>
             {
-                var first = group.First();
-                var trainer = first.Trainer;
-                if (!string.IsNullOrWhiteSpace(normalizedCity) &&
-                    !group.Any(s => string.Equals(s.Gym.City.Name, normalizedCity, StringComparison.OrdinalIgnoreCase)))
-                {
-                    return null;
-                }
-
                 var trainingTypes = group
-                    .Select(s => s.TrainingType.Name.Trim())
+                    .Select(s => s.TrainingTypeName.Trim())
                     .Where(x => !string.IsNullOrWhiteSpace(x))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(x => x)
                     .ToList();
                 var gymNames = group
-                    .Select(s => s.Gym.Name.Trim())
+                    .Select(s => s.GymName.Trim())
                     .Where(x => !string.IsNullOrWhiteSpace(x))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(x => x)
                     .ToList();
                 var cityNames = group
-                    .Select(s => s.Gym.City.Name.Trim())
+                    .Select(s => s.GymCityName.Trim())
                     .Where(x => !string.IsNullOrWhiteSpace(x))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(x => x)
@@ -470,13 +475,13 @@ public class TrainingSessionService : ITrainingSessionService
                 var avgOccupancy = group.Any()
                     ? group.Average(s => s.MaxParticipants == 0
                         ? 0
-                        : (double)s.Reservations.Count(r => r.Status == ReservationStatus.Confirmed) / s.MaxParticipants)
+                        : (double)s.ConfirmedReservations / s.MaxParticipants)
                     : 0;
                 var rating = Math.Round(Math.Clamp(4.0 + (avgOccupancy * 0.9) + (group.Count() >= 5 ? 0.1 : 0), 4.0, 5.0), 1);
 
-                applicationByTrainerId.TryGetValue(group.Key, out var application);
+                applicationByTrainerId.TryGetValue(group.Key.TrainerId, out var application);
 
-                var fullName = $"{trainer.FirstName} {trainer.LastName}".Trim();
+                var fullName = $"{group.Key.TrainerFirstName} {group.Key.TrainerLastName}".Trim();
                 var haystack = string.Join(" ", new[]
                 {
                     fullName,
@@ -491,15 +496,15 @@ public class TrainingSessionService : ITrainingSessionService
                     return null;
 
                 return new TrainerProfileDto(
-                    trainer.Id,
+                    group.Key.TrainerId,
                     fullName,
                     application?.Biography,
                     application?.Experience,
                     application?.Certifications,
                     application?.Availability,
-                    trainer.PhoneNumber,
-                    trainer.Email,
-                    trainer.City?.Name,
+                    group.Key.PhoneNumber,
+                    group.Key.Email,
+                    group.Key.TrainerCityName,
                     rating,
                     group.Count(),
                     group.Count(s => s.Type == SessionType.Group),
@@ -517,8 +522,6 @@ public class TrainingSessionService : ITrainingSessionService
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToList();
-
-        return profiles;
     }
 
     private async Task ValidateCreateOrUpdateAsync(CreateTrainingSessionDto dto)
@@ -581,6 +584,13 @@ public class TrainingSessionService : ITrainingSessionService
             throw new InvalidOperationException($"Prelaz rezervacije iz stanja {reservation.Status} u {targetStatus} nije dozvoljen.");
 
         reservation.Status = targetStatus;
+
+        if (targetStatus != ReservationStatus.Cancelled)
+        {
+            reservation.CancelledAt = null;
+            reservation.CancelledByUserId = null;
+            reservation.CancellationReason = null;
+        }
     }
 
     private static string BuildProgramKey(
@@ -647,5 +657,21 @@ public class TrainingSessionService : ITrainingSessionService
     private static SessionReservationDto ToReservationDto(SessionReservation r) => new(
         r.Id, r.UserId, $"{r.User.FirstName} {r.User.LastName}",
         r.TrainingSessionId, r.TrainingSession.Title, r.TrainingSession.Date,
-        r.Status, r.ReservedAt);
+        r.Status, r.ReservedAt, r.CancelledAt, r.CancelledByUserId, r.CancellationReason);
+
+    private sealed record TrainerProfileSessionRow(
+        int TrainerId,
+        string TrainerFirstName,
+        string TrainerLastName,
+        string? PhoneNumber,
+        string Email,
+        string? TrainerCityName,
+        string GymName,
+        string GymCityName,
+        string TrainingTypeName,
+        SessionType Type,
+        DateTime Date,
+        TimeOnly StartTime,
+        int MaxParticipants,
+        int ConfirmedReservations);
 }

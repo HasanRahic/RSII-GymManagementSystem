@@ -7,6 +7,9 @@ public class SessionReservation
     public int Id { get; set; }
     public DateTime ReservedAt { get; set; } = DateTime.UtcNow;
     public ReservationStatus Status { get; set; } = ReservationStatus.Confirmed;
+    public DateTime? CancelledAt { get; set; }
+    public int? CancelledByUserId { get; set; }
+    public string? CancellationReason { get; set; }
 
     public int UserId { get; set; }
     public User User { get; set; } = null!;
@@ -16,4 +19,6 @@ public class SessionReservation
 
     public int? PaymentId { get; set; }
     public Payment? Payment { get; set; }
+
+    public User? CancelledByUser { get; set; }
 }

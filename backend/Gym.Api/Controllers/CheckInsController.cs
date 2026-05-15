@@ -34,19 +34,23 @@ public class CheckInsController(ICheckInService checkInService) : ControllerBase
     [HttpGet("my")]
     public async Task<IActionResult> GetMyHistory(
         [FromQuery] DateTime? from,
-        [FromQuery] DateTime? to)
+        [FromQuery] DateTime? to,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 100)
     {
         var userId = User.GetUserId();
         if (!userId.HasValue) return Unauthorized();
-        return Ok(await checkInService.GetUserHistoryAsync(userId.Value, from, to));
+        return Ok(await checkInService.GetUserHistoryAsync(userId.Value, from, to, page, pageSize));
     }
 
     [HttpGet("gym/{gymId:int}")]
     [Authorize(Roles = "Admin,Trainer")]
     public async Task<IActionResult> GetGymCheckIns(
         int gymId,
-        [FromQuery] DateTime? date)
-        => Ok(await checkInService.GetGymCheckInsAsync(gymId, date));
+        [FromQuery] DateTime? date,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 100)
+        => Ok(await checkInService.GetGymCheckInsAsync(gymId, date, page, pageSize));
 
     [HttpGet("active/{userId:int}")]
     [Authorize(Roles = "Admin,Trainer")]
