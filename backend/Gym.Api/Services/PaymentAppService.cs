@@ -43,60 +43,6 @@ public sealed class PaymentAppService(
             .ToListAsync();
     }
 
-    public async Task<StripeCheckoutDto> CreateShopOrderAsync(int userId, CreateShopOrderDto dto, string domainUrl)
-    {
-        EnsureStripeConfigured();
-
-        if (dto.Items is null || dto.Items.Count == 0)
-            throw new InvalidOperationException("Korpa je prazna.");
-
-        var hasInvalidItem = dto.Items.Any(i =>
-            string.IsNullOrWhiteSpace(i.Name) || i.UnitPrice <= 0 || i.Quantity <= 0);
-        if (hasInvalidItem)
-            throw new InvalidOperationException("Artikli u korpi nisu validni.");
-
-        var totalAmount = dto.Items.Sum(i => i.UnitPrice * i.Quantity);
-        var userEmail = await RequireUserEmailAsync(userId);
-
-        var payment = new Payment
-        {
-            UserId = userId,
-            Amount = totalAmount,
-            Currency = "BAM",
-            Type = PaymentType.Shop,
-            Status = PaymentStatus.Pending,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        context.Payments.Add(payment);
-        await context.SaveChangesAsync();
-
-        var lineItems = dto.Items.Select(item => new SessionLineItemOptions
-        {
-            PriceData = new SessionLineItemPriceDataOptions
-            {
-                Currency = "bam",
-                ProductData = new SessionLineItemPriceDataProductDataOptions
-                {
-                    Name = item.Name,
-                    Description = "Artikal iz shop-a"
-                },
-                UnitAmountDecimal = item.UnitPrice * 100m
-            },
-            Quantity = item.Quantity
-        }).ToList();
-
-        var metadata = new Dictionary<string, string>
-        {
-            ["paymentId"] = payment.Id.ToString(),
-            ["userId"] = userId.ToString(),
-            ["type"] = "Shop"
-        };
-
-        var session = await CreateCheckoutSessionAsync(payment, userEmail, domainUrl, lineItems, metadata);
-        return new StripeCheckoutDto(payment.Id, session.Url ?? string.Empty, payment.Amount);
-    }
-
     public async Task<StripeCheckoutDto> CreateMembershipCheckoutAsync(int userId, CreateCheckoutSessionDto dto, string domainUrl)
     {
         EnsureStripeConfigured();

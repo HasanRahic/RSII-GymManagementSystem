@@ -45,25 +45,6 @@ public class PaymentsController(
         return Ok(new PaymentStatusDto(payment.Id, payment.Status, payment.CreatedAt, payment.CompletedAt));
     }
 
-    [HttpPost("shop-order")]
-    [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> CreateShopOrder([FromBody] CreateShopOrderDto dto)
-    {
-        var userId = User.GetUserId();
-        if (!userId.HasValue)
-            return Unauthorized();
-
-        try
-        {
-            var result = await paymentAppService.CreateShopOrderAsync(userId.Value, dto, GetDomainUrl());
-            return Ok(result);
-        }
-        catch (StripeException ex)
-        {
-            return BadRequest(new { message = $"Stripe greska: {ex.Message}" });
-        }
-    }
-
     [HttpPost("membership-checkout")]
     public async Task<IActionResult> CreateMembershipCheckout([FromBody] CreateCheckoutSessionDto dto)
     {

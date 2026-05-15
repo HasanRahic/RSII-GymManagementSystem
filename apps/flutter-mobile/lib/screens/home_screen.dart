@@ -1755,79 +1755,13 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final payload = _shopCart
-        .map(
-          (item) => {
-            'name': item.title,
-            'unitPrice': item.price,
-            'quantity': item.quantity,
-          },
-        )
-        .toList();
-
-    try {
-      final result = await PaymentService.createShopOrder(items: payload);
-      final paymentId = result['paymentId'];
-      final sessionUrl = result['sessionUrl'];
-      final amount = result['amount'];
-
-      if (!mounted) return;
-
-      // Save scaffold messenger reference before async operations
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
-
-      // Clear the cart immediately
-      setState(() {
-        _shopCart.clear();
-      });
-
-      // Open Stripe checkout URL
-      if (sessionUrl != null && sessionUrl.isNotEmpty) {
-        try {
-          final parsedPaymentId = paymentId is int
-              ? paymentId
-              : int.tryParse('$paymentId') ?? 0;
-          final launched = await _launchStripeCheckoutForPayment(
-            paymentId: parsedPaymentId,
-            sessionUrl: sessionUrl,
-          );
-          if (launched) {
-            if (!mounted) return;
-            scaffoldMessenger.showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Narudžba #$paymentId kreirana. Otvoren je Stripe checkout (${(amount as num).toStringAsFixed(0)} KM).',
-                ),
-              ),
-            );
-
-            // Webhook can take a few seconds; poll status so the user gets feedback in-app.
-            await _trackPaymentStatus(parsedPaymentId, scaffoldMessenger);
-          } else {
-            throw 'Ne mogu otvoriti checkout URL.';
-          }
-        } catch (e) {
-          if (!mounted) return;
-          scaffoldMessenger.showSnackBar(
-            SnackBar(
-              content: Text(
-                'Greška pri otvaranju checkouta: ${_friendlyError(e)}',
-              ),
-            ),
-          );
-        }
-      } else {
-        if (!mounted) return;
-        scaffoldMessenger.showSnackBar(
-          SnackBar(content: Text('Narudžba #$paymentId je kreirana.')),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Checkout nije uspio: ${_friendlyError(e)}')),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Shop checkout nije dio finalnog produkcijskog toka i uklonjen je iz API-ja.',
+        ),
+      ),
+    );
   }
 
   Future<void> _trackPaymentStatus(
