@@ -102,10 +102,6 @@ class MembershipService {
     return data.map((e) => UserMembership.fromJson(e)).toList();
   }
 
-  static Future<UserMembership> renew(Map<String, dynamic> dto) async {
-    final data = await ApiClient.post('/memberships/renew', dto);
-    return UserMembership.fromJson(data);
-  }
 }
 
 // ─── Check-in Service ─────────────────────────────────────────────────────────

@@ -59,19 +59,6 @@ class MembershipService {
     return Map<String, dynamic>.from(data as Map);
   }
 
-  static Future<UserMembership> renew({
-    required int userId,
-    required int membershipPlanId,
-    double discountPercent = 0,
-  }) async {
-    final data = await ApiClient.post('/memberships/renew', {
-      'userId': userId,
-      'membershipPlanId': membershipPlanId,
-      'discountPercent': discountPercent,
-    });
-    return UserMembership.fromJson(data);
-  }
-
   static Future<UserMembership> cancel(int membershipId) async {
     final data = await ApiClient.post('/memberships/$membershipId/cancel', {});
     return UserMembership.fromJson(data as Map<String, dynamic>);
@@ -88,13 +75,11 @@ class PaymentService {
 
   static Future<Map<String, dynamic>> createMembershipCheckout({
     required int membershipPlanId,
-    double discountPercent = 0,
   }) async {
     final data = await ApiClient.post('/payments/membership-checkout', {
       'type': 0,
       'membershipPlanId': membershipPlanId,
       'trainingSessionId': null,
-      'discountPercent': discountPercent,
       'sessionDurationDays': null,
     });
 
@@ -109,7 +94,6 @@ class PaymentService {
       'type': 1,
       'membershipPlanId': null,
       'trainingSessionId': trainingSessionId,
-      'discountPercent': 0,
       'sessionDurationDays': sessionDurationDays,
     });
 

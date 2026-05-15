@@ -184,46 +184,25 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
   }
 
   Future<void> _renewMembership(UserMembership membership) async {
-    final discountCtrl = TextEditingController(text: '0');
-    final formKey = GlobalKey<FormState>();
-
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Obnovi: ${membership.planName}'),
         content: SizedBox(
           width: 420,
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Teretana: ${membership.gymName}',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: discountCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Popust %',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (v) {
-                    final value = double.tryParse((v ?? '').replaceAll(',', '.'));
-                    if (value == null) return 'Unesite broj';
-                    if (value < 0 || value > 100) return 'Popust mora biti 0-100';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'Obnova koristi isti plan i otvara novu aktivnu članarinu.',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                ),
-              ],
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Teretana: ${membership.gymName}',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Obnova koristi isti plan i otvara Stripe checkout sa iznosom koji backend sigurno izracuna.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              ),
+            ],
           ),
         ),
         actions: [
@@ -233,7 +212,6 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
           ),
           FilledButton.icon(
             onPressed: () {
-              if (!formKey.currentState!.validate()) return;
               Navigator.pop(ctx, true);
             },
             icon: const Icon(Icons.refresh),
@@ -248,7 +226,6 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
     try {
       final result = await PaymentService.createMembershipCheckout(
         membershipPlanId: membership.membershipPlanId,
-        discountPercent: double.parse(discountCtrl.text.replaceAll(',', '.')),
       );
 
       final paymentId = result['paymentId'];
