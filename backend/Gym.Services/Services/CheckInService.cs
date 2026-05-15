@@ -122,16 +122,76 @@ public class CheckInService : ICheckInService
 
     private async Task AwardBadgesAsync(int userId)
     {
-        var totalVisits = await _context.CheckIns.CountAsync(c => c.UserId == userId && c.CheckOutTime != null);
-        var earnedBadges = await _context.UserBadges.Where(ub => ub.UserId == userId).Select(ub => ub.BadgeId).ToListAsync();
+        var completedCheckIns = await _context.CheckIns
+            .Where(c => c.UserId == userId && c.CheckOutTime != null)
+            .OrderBy(c => c.CheckInTime)
+            .Select(c => c.CheckInTime)
+            .ToListAsync();
+
+        var totalVisits = completedCheckIns.Count;
+        var longestStreak = CalculateLongestDailyStreak(completedCheckIns);
+        var earnedBadges = await _context.UserBadges
+            .Where(ub => ub.UserId == userId)
+            .Select(ub => ub.BadgeId)
+            .ToListAsync();
         var allBadges = await _context.Badges.ToListAsync();
 
-        foreach (var badge in allBadges.Where(b => b.RequiredCount <= totalVisits && !earnedBadges.Contains(b.Id)))
+        foreach (var badge in allBadges.Where(b => !earnedBadges.Contains(b.Id)))
         {
-            _context.UserBadges.Add(new UserBadge { UserId = userId, BadgeId = badge.Id });
+            if (!HasBadgeRequirementMet(badge, totalVisits, longestStreak))
+                continue;
+
+            _context.UserBadges.Add(new UserBadge
+            {
+                UserId = userId,
+                BadgeId = badge.Id,
+                EarnedAt = DateTime.UtcNow
+            });
         }
 
         await _context.SaveChangesAsync();
+    }
+
+    private static bool HasBadgeRequirementMet(Badge badge, int totalVisits, int longestStreak)
+        => badge.Type switch
+        {
+            BadgeType.FirstVisit or
+            BadgeType.Visits5 or
+            BadgeType.Visits10 or
+            BadgeType.Visits25 or
+            BadgeType.Visits50 or
+            BadgeType.Visits100 => totalVisits >= badge.RequiredCount,
+            BadgeType.Streak7 or
+            BadgeType.Streak30 or
+            BadgeType.Streak90 => longestStreak >= badge.RequiredCount,
+            _ => false
+        };
+
+    private static int CalculateLongestDailyStreak(IEnumerable<DateTime> checkInTimes)
+    {
+        var distinctDays = checkInTimes
+            .Select(time => time.ToLocalTime().Date)
+            .Distinct()
+            .OrderBy(day => day)
+            .ToList();
+
+        if (distinctDays.Count == 0)
+            return 0;
+
+        var longest = 1;
+        var current = 1;
+
+        for (var i = 1; i < distinctDays.Count; i++)
+        {
+            current = distinctDays[i] == distinctDays[i - 1].AddDays(1)
+                ? current + 1
+                : 1;
+
+            if (current > longest)
+                longest = current;
+        }
+
+        return longest;
     }
 
     private static CheckInDto ToDto(CheckIn c)

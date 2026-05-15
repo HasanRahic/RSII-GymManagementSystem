@@ -18,6 +18,7 @@ public static class DbSeeder
             await EnsureGymCatalogAsync(context);
             await EnsureMembershipPlanCatalogAsync(context);
             await EnsureRecurringGroupSessionCatalogAsync(context);
+            await EnsureBadgeCatalogAsync(context);
             return;
         }
 
@@ -297,6 +298,7 @@ public static class DbSeeder
         };
         context.Badges.AddRange(badges);
         await context.SaveChangesAsync();
+        await EnsureBadgeCatalogAsync(context);
 
         context.UserBadges.AddRange(
             new UserBadge { UserId = member.Id, BadgeId = badges[0].Id, EarnedAt = now.AddDays(-14) },
@@ -544,6 +546,36 @@ public static class DbSeeder
             }
         }
 
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task EnsureBadgeCatalogAsync(GymDbContext context)
+    {
+        var existingTypes = await context.Badges
+            .Select(b => b.Type)
+            .ToListAsync();
+
+        var catalog = new[]
+        {
+            new Badge { Name = "Prvi dolazak", Description = "Dobrodosao u teretanu!", Type = BadgeType.FirstVisit, RequiredCount = 1 },
+            new Badge { Name = "5 dolazaka", Description = "5 posjeta teretani.", Type = BadgeType.Visits5, RequiredCount = 5 },
+            new Badge { Name = "10 dolazaka", Description = "10 posjeta teretani.", Type = BadgeType.Visits10, RequiredCount = 10 },
+            new Badge { Name = "25 dolazaka", Description = "25 posjeta teretani.", Type = BadgeType.Visits25, RequiredCount = 25 },
+            new Badge { Name = "50 dolazaka", Description = "50 posjeta teretani.", Type = BadgeType.Visits50, RequiredCount = 50 },
+            new Badge { Name = "100 dolazaka", Description = "100 posjeta teretani.", Type = BadgeType.Visits100, RequiredCount = 100 },
+            new Badge { Name = "Streak 7 dana", Description = "7 uzastopnih dana treninga.", Type = BadgeType.Streak7, RequiredCount = 7 },
+            new Badge { Name = "Streak 30 dana", Description = "30 uzastopnih dana treninga.", Type = BadgeType.Streak30, RequiredCount = 30 },
+            new Badge { Name = "Streak 90 dana", Description = "90 uzastopnih dana treninga.", Type = BadgeType.Streak90, RequiredCount = 90 }
+        };
+
+        var missingBadges = catalog
+            .Where(badge => !existingTypes.Contains(badge.Type))
+            .ToList();
+
+        if (missingBadges.Count == 0)
+            return;
+
+        context.Badges.AddRange(missingBadges);
         await context.SaveChangesAsync();
     }
 
