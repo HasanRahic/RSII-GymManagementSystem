@@ -100,7 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       TextFormField(
                         controller: _userCtrl,
                         decoration: const InputDecoration(
-                          labelText: 'Korisničko ime',
+                          labelText: 'Korisničko ime ili email',
                           prefixIcon: Icon(Icons.person_outline),
                           border: OutlineInputBorder(),
                         ),

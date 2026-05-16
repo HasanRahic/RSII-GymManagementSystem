@@ -169,6 +169,117 @@ public sealed class PaymentAppService(
         return new StripeCheckoutDto(payment.Id, session.Url ?? string.Empty, payment.Amount);
     }
 
+    public async Task<StripeCheckoutDto> CreateShopCheckoutAsync(int userId, CreateShopOrderDto dto, string domainUrl)
+    {
+        EnsureStripeConfigured();
+
+        if (dto.Items is null || dto.Items.Count == 0)
+            throw new InvalidOperationException("Narudzba mora sadrzavati barem jedan artikal.");
+
+        var requestedItems = dto.Items
+            .Where(item => item.ProductId.HasValue && item.Quantity > 0)
+            .Select(item => new { ProductId = item.ProductId!.Value, item.Quantity })
+            .ToList();
+
+        if (requestedItems.Count == 0)
+            throw new InvalidOperationException("Narudzba ne sadrzi validne artikle.");
+
+        var distinctProductIds = requestedItems.Select(item => item.ProductId).Distinct().ToList();
+        var products = await context.ShopProducts
+            .Include(p => p.Gym)
+            .Where(p => distinctProductIds.Contains(p.Id) && p.IsActive)
+            .ToListAsync();
+
+        if (products.Count != distinctProductIds.Count)
+            throw new InvalidOperationException("Jedan ili vise proizvoda iz korpe vise nisu dostupni.");
+
+        var gymId = products.First().GymId;
+        if (products.Any(p => p.GymId != gymId))
+            throw new InvalidOperationException("Shop narudzba moze sadrzavati proizvode samo iz jedne teretane.");
+
+        var checkoutItems = new List<(ShopProduct Product, int Quantity)>();
+        foreach (var item in requestedItems)
+        {
+            var product = products.First(p => p.Id == item.ProductId);
+            if (product.StockQuantity < item.Quantity)
+                throw new InvalidOperationException($"Proizvod \"{product.Name}\" nema dovoljno zaliha.");
+
+            checkoutItems.Add((product, item.Quantity));
+        }
+
+        var totalAmount = checkoutItems.Sum(item => item.Product.Price * item.Quantity);
+        if (totalAmount <= 0m)
+            throw new InvalidOperationException("Ukupan iznos shop narudzbe mora biti veci od nule.");
+
+        var userEmail = await RequireUserEmailAsync(userId);
+
+        var payment = new Payment
+        {
+            UserId = userId,
+            Amount = totalAmount,
+            Currency = "BAM",
+            Type = PaymentType.Shop,
+            Status = PaymentStatus.Pending,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        context.Payments.Add(payment);
+        await context.SaveChangesAsync();
+
+        var order = new ShopOrder
+        {
+            PaymentId = payment.Id,
+            Payment = payment,
+            UserId = userId,
+            GymId = gymId,
+            TotalAmount = totalAmount,
+            Items = checkoutItems.Select(item => new ShopOrderItem
+            {
+                ShopProductId = item.Product.Id,
+                ProductNameSnapshot = item.Product.Name,
+                UnitPrice = item.Product.Price,
+                Quantity = item.Quantity
+            }).ToList()
+        };
+
+        context.ShopOrders.Add(order);
+        await context.SaveChangesAsync();
+
+        var itemSummary = string.Join(", ", checkoutItems.Select(item => $"{item.Product.Name} x{item.Quantity}"));
+        var metadata = new Dictionary<string, string>
+        {
+            ["paymentId"] = payment.Id.ToString(),
+            ["userId"] = userId.ToString(),
+            ["type"] = PaymentType.Shop.ToString(),
+            ["shopOrderId"] = order.Id.ToString(),
+            ["shopGymId"] = gymId.ToString(),
+            ["shopItemCount"] = checkoutItems.Count.ToString(CultureInfo.InvariantCulture),
+            ["shopSummary"] = itemSummary.Length <= 500 ? itemSummary : itemSummary[..500]
+        };
+
+        var session = await CreateCheckoutSessionAsync(
+            payment,
+            userEmail,
+            domainUrl,
+            checkoutItems.Select(item => new SessionLineItemOptions
+            {
+                PriceData = new SessionLineItemPriceDataOptions
+                {
+                    Currency = "bam",
+                    ProductData = new SessionLineItemPriceDataProductDataOptions
+                    {
+                        Name = item.Product.Name,
+                        Description = "Shop artikal iz teretane"
+                    },
+                    UnitAmountDecimal = item.Product.Price * 100m
+                },
+                Quantity = item.Quantity
+            }).ToList(),
+            metadata);
+
+        return new StripeCheckoutDto(payment.Id, session.Url ?? string.Empty, payment.Amount);
+    }
+
     public async Task<StripeCheckoutDto> RetryCheckoutAsync(int userId, int paymentId, string domainUrl)
     {
         EnsureStripeConfigured();
@@ -223,6 +334,39 @@ public sealed class PaymentAppService(
             {
                 metadata["trainingSessionId"] = originalSessionId.ToString();
                 metadata["sessionDurationDays"] = payment.SessionAccessDays.Value.ToString(CultureInfo.InvariantCulture);
+            }
+        }
+        else if (payment.Type == PaymentType.Shop)
+        {
+            var originalOrder = await context.ShopOrders
+                .Include(o => o.Items)
+                .FirstOrDefaultAsync(o => o.PaymentId == paymentId);
+
+            if (originalOrder is not null)
+            {
+                var clonedOrder = new ShopOrder
+                {
+                    PaymentId = newPayment.Id,
+                    UserId = originalOrder.UserId,
+                    GymId = originalOrder.GymId,
+                    TotalAmount = originalOrder.TotalAmount,
+                    Items = originalOrder.Items.Select(item => new ShopOrderItem
+                    {
+                        ShopProductId = item.ShopProductId,
+                        ProductNameSnapshot = item.ProductNameSnapshot,
+                        UnitPrice = item.UnitPrice,
+                        Quantity = item.Quantity
+                    }).ToList()
+                };
+
+                context.ShopOrders.Add(clonedOrder);
+                await context.SaveChangesAsync();
+
+                metadata["shopOrderId"] = clonedOrder.Id.ToString();
+                metadata["shopGymId"] = clonedOrder.GymId.ToString();
+                metadata["shopItemCount"] = clonedOrder.Items.Count.ToString(CultureInfo.InvariantCulture);
+                var summary = string.Join(", ", clonedOrder.Items.Select(item => $"{item.ProductNameSnapshot} x{item.Quantity}"));
+                metadata["shopSummary"] = summary.Length <= 500 ? summary : summary[..500];
             }
         }
 

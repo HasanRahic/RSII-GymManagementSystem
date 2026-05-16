@@ -7,6 +7,7 @@ public interface IReferenceService
     Task<IReadOnlyList<CountryDto>> GetCountriesAsync(int page, int pageSize);
     Task<IReadOnlyList<CityDto>> GetCitiesAsync(int? countryId, int page, int pageSize);
     Task<IReadOnlyList<TrainingTypeDto>> GetTrainingTypesAsync(int page, int pageSize);
+    Task<IReadOnlyList<ShopProductDto>> GetShopProductsAsync(int? gymId, bool activeOnly, int page, int pageSize);
     Task<CountryDto> CreateCountryAsync(CreateCountryDto dto);
     Task<CountryDto> UpdateCountryAsync(int id, UpdateCountryDto dto);
     Task DeleteCountryAsync(int id);
@@ -16,4 +17,7 @@ public interface IReferenceService
     Task<TrainingTypeDto> CreateTrainingTypeAsync(CreateTrainingTypeDto dto);
     Task<TrainingTypeDto> UpdateTrainingTypeAsync(int id, UpdateTrainingTypeDto dto);
     Task DeleteTrainingTypeAsync(int id);
+    Task<ShopProductDto> CreateShopProductAsync(CreateShopProductDto dto);
+    Task<ShopProductDto> UpdateShopProductAsync(int id, UpdateShopProductDto dto);
+    Task DeleteShopProductAsync(int id);
 }

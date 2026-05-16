@@ -59,8 +59,11 @@ public class AuthService : IAuthService
 
     public async Task<AuthResponseDto> LoginAsync(LoginDto dto)
     {
+        var identifier = dto.Username.Trim();
         var user = await _context.Users
-            .FirstOrDefaultAsync(u => u.Username == dto.Username && u.IsActive);
+            .FirstOrDefaultAsync(u =>
+                u.IsActive &&
+                (u.Username == identifier || u.Email == identifier));
 
         if (user is null)
             throw new UnauthorizedAccessException("Neispravno korisnicko ime ili lozinka.");

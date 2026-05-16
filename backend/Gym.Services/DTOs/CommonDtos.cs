@@ -29,13 +29,14 @@ public record CheckoutSessionResultDto(
 );
 
 public record ShopOrderItemDto(
-    string Name,
+    int? ProductId,
+    [Required, StringLength(120, MinimumLength = 2)] string Name,
     decimal UnitPrice,
-    int Quantity
+    [Range(1, 99)] int Quantity
 );
 
 public record CreateShopOrderDto(
-    List<ShopOrderItemDto> Items
+    [Required, MinLength(1)] List<ShopOrderItemDto> Items
 );
 
 public record ShopOrderResultDto(
@@ -76,6 +77,41 @@ public record AccessStatusDto(
     bool HasActiveGroupTrainingAccess,
     bool HasGymAccess,
     DateTime? GroupAccessUntil
+);
+
+public record ShopProductDto(
+    int Id,
+    string Name,
+    string Category,
+    string? Description,
+    decimal Price,
+    int StockQuantity,
+    string? Emoji,
+    bool IsActive,
+    int GymId,
+    string GymName
+);
+
+public record CreateShopProductDto(
+    [Required, StringLength(120, MinimumLength = 2)] string Name,
+    [Required, StringLength(80, MinimumLength = 2)] string Category,
+    [StringLength(500)] string? Description,
+    decimal Price,
+    [Range(0, 100000)] int StockQuantity,
+    [StringLength(16)] string? Emoji,
+    [Range(1, int.MaxValue)] int GymId,
+    bool IsActive = true
+);
+
+public record UpdateShopProductDto(
+    [Required, StringLength(120, MinimumLength = 2)] string Name,
+    [Required, StringLength(80, MinimumLength = 2)] string Category,
+    [StringLength(500)] string? Description,
+    decimal Price,
+    [Range(0, 100000)] int StockQuantity,
+    [StringLength(16)] string? Emoji,
+    [Range(1, int.MaxValue)] int GymId,
+    bool IsActive
 );
 
 // Reference DTOs

@@ -100,6 +100,16 @@ class PaymentService {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  static Future<Map<String, dynamic>> createShopCheckout({
+    required List<Map<String, dynamic>> items,
+  }) async {
+    final data = await ApiClient.post('/payments/shop-checkout', {
+      'items': items,
+    });
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   static Future<Map<String, dynamic>> getPaymentStatus(int paymentId) async {
     final data = await ApiClient.get('/payments/$paymentId/status');
     return Map<String, dynamic>.from(data as Map);
@@ -292,6 +302,24 @@ class ReferenceService {
     final trainingTypes = data.map((e) => TrainingTypeModel.fromJson(e)).toList();
     _trainingTypesCache = trainingTypes;
     return trainingTypes;
+  }
+
+  static Future<List<ShopProductModel>> getShopProducts({
+    int? gymId,
+    bool activeOnly = true,
+    int page = 1,
+    int pageSize = 200,
+  }) async {
+    final query = <String>[
+      'activeOnly=$activeOnly',
+      'page=$page',
+      'pageSize=$pageSize',
+      if (gymId != null) 'gymId=$gymId',
+    ];
+    final data = await ApiClient.get('/reference/shop-products?${query.join('&')}') as List;
+    return data
+        .map((e) => ShopProductModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 }
 

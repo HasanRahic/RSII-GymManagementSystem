@@ -22,6 +22,9 @@ public class GymDbContext : DbContext
     public DbSet<Badge> Badges => Set<Badge>();
     public DbSet<UserBadge> UserBadges => Set<UserBadge>();
     public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<ShopProduct> ShopProducts => Set<ShopProduct>();
+    public DbSet<ShopOrder> ShopOrders => Set<ShopOrder>();
+    public DbSet<ShopOrderItem> ShopOrderItems => Set<ShopOrderItem>();
     public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -51,6 +54,57 @@ public class GymDbContext : DbContext
         {
             e.Property(g => g.Status).HasConversion<string>();
             e.Property(g => g.Capacity).HasDefaultValue(50);
+        });
+
+        modelBuilder.Entity<ShopProduct>(e =>
+        {
+            e.Property(p => p.Name).HasMaxLength(120);
+            e.Property(p => p.Category).HasMaxLength(80);
+            e.Property(p => p.Emoji).HasMaxLength(16);
+            e.Property(p => p.Price).HasPrecision(10, 2);
+
+            e.HasOne(p => p.Gym)
+             .WithMany(g => g.ShopProducts)
+             .HasForeignKey(p => p.GymId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasIndex(p => new { p.GymId, p.Name }).IsUnique();
+        });
+
+        modelBuilder.Entity<ShopOrder>(e =>
+        {
+            e.Property(o => o.TotalAmount).HasPrecision(10, 2);
+
+            e.HasOne(o => o.User)
+             .WithMany()
+             .HasForeignKey(o => o.UserId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(o => o.Gym)
+             .WithMany(g => g.ShopOrders)
+             .HasForeignKey(o => o.GymId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(o => o.Payment)
+             .WithOne(p => p.ShopOrder)
+             .HasForeignKey<ShopOrder>(o => o.PaymentId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ShopOrderItem>(e =>
+        {
+            e.Property(i => i.ProductNameSnapshot).HasMaxLength(120);
+            e.Property(i => i.UnitPrice).HasPrecision(10, 2);
+
+            e.HasOne(i => i.ShopOrder)
+             .WithMany(o => o.Items)
+             .HasForeignKey(i => i.ShopOrderId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(i => i.ShopProduct)
+             .WithMany(p => p.OrderItems)
+             .HasForeignKey(i => i.ShopProductId)
+             .OnDelete(DeleteBehavior.Restrict);
         });
 
         // MembershipPlan

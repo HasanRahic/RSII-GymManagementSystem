@@ -27,5 +27,7 @@ public class GymFacility
     public ICollection<UserMembership> UserMemberships { get; set; } = new List<UserMembership>();
     public ICollection<CheckIn> CheckIns { get; set; } = new List<CheckIn>();
     public ICollection<TrainingSession> TrainingSessions { get; set; } = new List<TrainingSession>();
+    public ICollection<ShopProduct> ShopProducts { get; set; } = new List<ShopProduct>();
+    public ICollection<ShopOrder> ShopOrders { get; set; } = new List<ShopOrder>();
     public ICollection<User> PrimaryMembers { get; set; } = new List<User>();
 }

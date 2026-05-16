@@ -21,4 +21,5 @@ public class Payment
 
     public UserMembership? UserMembership { get; set; }
     public SessionReservation? SessionReservation { get; set; }
+    public ShopOrder? ShopOrder { get; set; }
 }

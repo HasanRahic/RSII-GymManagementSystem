@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/models.dart';
 import '../providers/auth_provider.dart';
@@ -51,78 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<TrainingTypeModel> _trainingTypeCatalog = [];
   List<String> _trainingTypes = [];
   final List<_ShopCartItem> _shopCart = [];
-  final List<_ShopProduct> _shopProducts = const [
-    _ShopProduct(
-      title: 'Whey Protein',
-      price: 89,
-      emoji: '🥤',
-      category: 'Suplementi',
-      gymIds: [1],
-    ),
-    _ShopProduct(
-      title: 'Creatine Monohydrate',
-      price: 49,
-      emoji: '⚗️',
-      category: 'Suplementi',
-      gymIds: [1, 2],
-    ),
-    _ShopProduct(
-      title: 'FitZone Majica',
-      price: 35,
-      emoji: '👕',
-      category: 'Odjeća',
-      gymIds: [1],
-    ),
-    _ShopProduct(
-      title: 'Power Resistance Band',
-      price: 24,
-      emoji: '🧵',
-      category: 'Oprema',
-      gymIds: [2],
-    ),
-    _ShopProduct(
-      title: 'BCAA Recovery',
-      price: 39,
-      emoji: '💧',
-      category: 'Suplementi',
-      gymIds: [2, 3],
-    ),
-    _ShopProduct(
-      title: 'Gym Shorts',
-      price: 42,
-      emoji: '🩳',
-      category: 'Odjeća',
-      gymIds: [2, 3],
-    ),
-    _ShopProduct(
-      title: 'Muške Rukavice',
-      price: 29,
-      emoji: '🧤',
-      category: 'Oprema',
-      gymIds: [1, 3],
-    ),
-    _ShopProduct(
-      title: 'Shaker 700ml',
-      price: 15,
-      emoji: '🧋',
-      category: 'Oprema',
-      gymIds: [1, 2, 3],
-    ),
-    _ShopProduct(
-      title: 'Yoga Prostirka',
-      price: 55,
-      emoji: '🧘',
-      category: 'Oprema',
-      gymIds: [3],
-    ),
-    _ShopProduct(
-      title: 'IronGym Pojas',
-      price: 47,
-      emoji: '🦾',
-      category: 'Oprema',
-      gymIds: [3],
-    ),
-  ];
+  List<ShopProductModel> _shopProducts = [];
   List<Map<String, dynamic>> _recentPayments = [];
   bool _loadingPayments = true;
   int _pendingPaymentsCount = 0;
@@ -586,10 +516,12 @@ class _HomeScreenState extends State<HomeScreen> {
       final results = await Future.wait([
         GymService.getAll(),
         MembershipService.getPlans(),
+        ReferenceService.getShopProducts(activeOnly: true),
       ]);
 
       final gyms = results[0] as List<GymModel>;
       final plans = results[1] as List<MembershipPlanModel>;
+      final shopProducts = results[2] as List<ShopProductModel>;
 
       if (!mounted) return;
       final nextMembershipGymId = (() {
@@ -609,24 +541,28 @@ class _HomeScreenState extends State<HomeScreen> {
       final catalogChanged =
           _gyms.length != gyms.length ||
           _plans.length != plans.length ||
+          _shopProducts.length != shopProducts.length ||
           _selectedShopGymId != nextShopGymId;
 
       if (catalogChanged) {
         setState(() {
           _gyms = gyms;
           _plans = plans;
+          _shopProducts = shopProducts;
           _selectedShopGymId = nextShopGymId;
         });
       } else {
         _gyms = gyms;
         _plans = plans;
+        _shopProducts = shopProducts;
       }
     } catch (_) {
       if (!mounted) return;
-      if (_gyms.isNotEmpty || _plans.isNotEmpty) {
+      if (_gyms.isNotEmpty || _plans.isNotEmpty || _shopProducts.isNotEmpty) {
         setState(() {
           _gyms = [];
           _plans = [];
+          _shopProducts = [];
         });
       }
     } finally {
@@ -1502,15 +1438,13 @@ class _HomeScreenState extends State<HomeScreen> {
     return ['Sve', ...categories];
   }
 
-  List<_ShopProduct> get _filteredProductsByGym {
+  List<ShopProductModel> get _filteredProductsByGym {
     final gymId = _effectiveShopGymId;
     if (gymId == null) return _shopProducts;
-    return _shopProducts
-        .where((product) => product.gymIds.contains(gymId))
-        .toList();
+    return _shopProducts.where((product) => product.gymId == gymId).toList();
   }
 
-  List<_ShopProduct> get _filteredShopProducts {
+  List<ShopProductModel> get _filteredShopProducts {
     final query = _shopSearchCtrl.text.trim().toLowerCase();
     return _filteredProductsByGym.where((product) {
       final categoryMatches =
@@ -1518,31 +1452,41 @@ class _HomeScreenState extends State<HomeScreen> {
           product.category == _selectedShopCategory;
       final queryMatches =
           query.isEmpty ||
-          product.title.toLowerCase().contains(query) ||
+          product.name.toLowerCase().contains(query) ||
           product.category.toLowerCase().contains(query);
       return categoryMatches && queryMatches;
     }).toList();
   }
 
   Future<bool> _launchStripeCheckout(String sessionUrl) async {
-    if (!mounted) return false;
-    final launched = await Navigator.push<bool>(
-      context,
-      PageRouteBuilder<bool>(
-        transitionDuration: const Duration(milliseconds: 90),
-        reverseTransitionDuration: const Duration(milliseconds: 80),
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            StripeCheckoutScreen(checkoutUrl: sessionUrl),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final curved = CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutCubic,
-          );
-          return FadeTransition(opacity: curved, child: child);
-        },
-      ),
-    );
-    return launched ?? false;
+    final checkoutUri = Uri.tryParse(sessionUrl);
+    if (!mounted || checkoutUri == null) return false;
+
+    try {
+      final launched = await Navigator.push<bool>(
+        context,
+        PageRouteBuilder<bool>(
+          transitionDuration: const Duration(milliseconds: 90),
+          reverseTransitionDuration: const Duration(milliseconds: 80),
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              StripeCheckoutScreen(checkoutUrl: sessionUrl),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final curved = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            );
+            return FadeTransition(opacity: curved, child: child);
+          },
+        ),
+      );
+      if (launched == true) {
+        return true;
+      }
+    } catch (_) {
+      // Fall back to external browser below.
+    }
+
+    return launchUrl(checkoutUri, mode: LaunchMode.externalApplication);
   }
 
   Future<bool> _launchStripeCheckoutForPayment({
@@ -1566,21 +1510,27 @@ class _HomeScreenState extends State<HomeScreen> {
     return launched;
   }
 
-  Future<void> _addShopItemToCart(String title, double price) async {
+  Future<void> _addShopItemToCart(ShopProductModel product) async {
     setState(() {
       final index = _shopCart.indexWhere(
-        (item) => item.title == title && item.price == price,
+        (item) => item.productId == product.id,
       );
 
       if (index >= 0) {
         final existing = _shopCart[index];
         _shopCart[index] = _ShopCartItem(
+          productId: existing.productId,
           title: existing.title,
           price: existing.price,
           quantity: existing.quantity + 1,
         );
       } else {
-        _shopCart.add(_ShopCartItem(title: title, price: price, quantity: 1));
+        _shopCart.add(_ShopCartItem(
+          productId: product.id,
+          title: product.name,
+          price: product.price,
+          quantity: 1,
+        ));
       }
     });
 
@@ -1589,7 +1539,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text('$title je dodan u korpu.'),
+          content: Text('${product.name} je dodan u korpu.'),
           duration: const Duration(milliseconds: 1200),
           action: SnackBarAction(label: 'Korpa', onPressed: _openShopCheckout),
         ),
@@ -1599,7 +1549,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _changeCartItemQuantity(_ShopCartItem item, int delta) {
     setState(() {
       final index = _shopCart.indexWhere(
-        (x) => x.title == item.title && x.price == item.price,
+        (x) => x.productId == item.productId,
       );
       if (index < 0) return;
 
@@ -1609,6 +1559,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _shopCart.removeAt(index);
       } else {
         _shopCart[index] = _ShopCartItem(
+          productId: current.productId,
           title: current.title,
           price: current.price,
           quantity: nextQty,
@@ -1619,9 +1570,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _removeCartItem(_ShopCartItem item) {
     setState(() {
-      _shopCart.removeWhere(
-        (x) => x.title == item.title && x.price == item.price,
-      );
+      _shopCart.removeWhere((x) => x.productId == item.productId);
     });
   }
 
@@ -1755,18 +1704,70 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Shop checkout nije dio finalnog produkcijskog toka i uklonjen je iz API-ja.',
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final checkoutItems = _shopCart
+        .map(
+          (item) => <String, dynamic>{
+            'productId': item.productId,
+            'name': item.title,
+            'unitPrice': item.price,
+            'quantity': item.quantity,
+          },
+        )
+        .toList(growable: false);
+
+    try {
+      final result = await PaymentService.createShopCheckout(items: checkoutItems);
+      final paymentId = int.tryParse('${result['paymentId'] ?? ''}') ?? 0;
+      final sessionUrl = (result['sessionUrl'] ?? '').toString();
+
+      if (sessionUrl.isEmpty) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text('Stripe checkout nije dostupan za shop narudžbu.'),
+          ),
+        );
+        return;
+      }
+
+      final launched = await _launchStripeCheckoutForPayment(
+        paymentId: paymentId,
+        sessionUrl: sessionUrl,
+      );
+
+      if (!mounted) return;
+
+      if (launched) {
+        await _trackPaymentStatus(
+          paymentId,
+          scaffoldMessenger,
+          onSucceeded: () async {
+            await _loadCatalog();
+            if (!mounted) return;
+            setState(() => _shopCart.clear());
+          },
+        );
+      } else {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text('Nije moguće otvoriti Stripe checkout za shop narudžbu.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Greška pri kreiranju shop narudžbe: ${_friendlyError(e)}'),
         ),
-      ),
-    );
+      );
+    }
   }
 
   Future<void> _trackPaymentStatus(
     int paymentId,
     ScaffoldMessengerState scaffoldMessenger,
+    {Future<void> Function()? onSucceeded}
   ) async {
     if (paymentId <= 0) return;
 
@@ -1778,6 +1779,9 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadMembership();
       await _loadPayments();
       await _loadPaidGroupSchedule();
+      if (onSucceeded != null) {
+        await onSucceeded();
+      }
       await _refreshPendingPaymentsCount();
       scaffoldMessenger.showSnackBar(
         SnackBar(content: Text('Uplata #$paymentId je uspješno potvrđena.')),
@@ -3813,11 +3817,21 @@ class _HomeScreenState extends State<HomeScreen> {
             itemBuilder: (context, index) {
               final product = _filteredShopProducts[index];
               return _OfferCard(
-                emoji: product.emoji,
-                title: product.title,
+                emoji: product.emoji ?? '🛍️',
+                title: product.name,
                 price: '${product.price.toStringAsFixed(0)} KM',
-                subtitle: product.category,
-                onBuy: () => _addShopItemToCart(product.title, product.price),
+                subtitle: '${product.category} · Zaliha ${product.stockQuantity}',
+                onBuy: product.stockQuantity > 0
+                    ? () => _addShopItemToCart(product)
+                    : () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Proizvod "${product.name}" trenutno nije dostupan na stanju.',
+                            ),
+                          ),
+                        );
+                      },
               );
             },
           ),
@@ -6806,30 +6820,16 @@ class _MembershipOfferCard extends StatelessWidget {
 }
 
 class _ShopCartItem {
+  final int productId;
   final String title;
   final double price;
   final int quantity;
 
   const _ShopCartItem({
+    required this.productId,
     required this.title,
     required this.price,
     this.quantity = 1,
-  });
-}
-
-class _ShopProduct {
-  final String title;
-  final double price;
-  final String emoji;
-  final String category;
-  final List<int> gymIds;
-
-  const _ShopProduct({
-    required this.title,
-    required this.price,
-    required this.emoji,
-    required this.category,
-    required this.gymIds,
   });
 }
 
@@ -7633,3 +7633,4 @@ class _ProfileMetricGrid extends StatelessWidget {
     );
   }
 }
+

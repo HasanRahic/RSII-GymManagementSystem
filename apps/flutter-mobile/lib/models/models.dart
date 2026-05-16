@@ -254,6 +254,47 @@ class TrainingTypeModel {
   }
 }
 
+class ShopProductModel {
+  final int id;
+  final String name;
+  final String category;
+  final String? description;
+  final double price;
+  final int stockQuantity;
+  final String? emoji;
+  final bool isActive;
+  final int gymId;
+  final String gymName;
+
+  const ShopProductModel({
+    required this.id,
+    required this.name,
+    required this.category,
+    required this.description,
+    required this.price,
+    required this.stockQuantity,
+    required this.emoji,
+    required this.isActive,
+    required this.gymId,
+    required this.gymName,
+  });
+
+  factory ShopProductModel.fromJson(Map<String, dynamic> j) {
+    return ShopProductModel(
+      id: j['id'] ?? 0,
+      name: (j['name'] ?? '').toString(),
+      category: (j['category'] ?? '').toString(),
+      description: j['description']?.toString(),
+      price: (j['price'] as num?)?.toDouble() ?? 0,
+      stockQuantity: j['stockQuantity'] ?? 0,
+      emoji: j['emoji']?.toString(),
+      isActive: j['isActive'] ?? true,
+      gymId: j['gymId'] ?? 0,
+      gymName: (j['gymName'] ?? '').toString(),
+    );
+  }
+}
+
 class UserMembership {
   final int id;
   final int membershipPlanId;

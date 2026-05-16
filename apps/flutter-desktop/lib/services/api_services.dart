@@ -194,6 +194,18 @@ class ReferenceService {
     return data.map((e) => TrainingTypeReferenceModel.fromJson(e)).toList();
   }
 
+  static Future<List<ShopProductReferenceModel>> getShopProducts({
+    int? gymId,
+    bool activeOnly = false,
+  }) async {
+    final params = <String>[
+      'activeOnly=$activeOnly',
+      if (gymId != null) 'gymId=$gymId',
+    ];
+    final data = await ApiClient.get('/reference/shop-products?${params.join('&')}') as List;
+    return data.map((e) => ShopProductReferenceModel.fromJson(e)).toList();
+  }
+
   static Future<CountryModel> createCountry(Map<String, dynamic> dto) async {
     final data = await ApiClient.post('/reference/countries', dto);
     return CountryModel.fromJson(data);
@@ -234,5 +246,19 @@ class ReferenceService {
 
   static Future<void> deleteTrainingType(int id) async {
     await ApiClient.delete('/reference/training-types/$id');
+  }
+
+  static Future<ShopProductReferenceModel> createShopProduct(Map<String, dynamic> dto) async {
+    final data = await ApiClient.post('/reference/shop-products', dto);
+    return ShopProductReferenceModel.fromJson(data);
+  }
+
+  static Future<ShopProductReferenceModel> updateShopProduct(int id, Map<String, dynamic> dto) async {
+    final data = await ApiClient.put('/reference/shop-products/$id', dto);
+    return ShopProductReferenceModel.fromJson(data);
+  }
+
+  static Future<void> deleteShopProduct(int id) async {
+    await ApiClient.delete('/reference/shop-products/$id');
   }
 }

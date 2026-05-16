@@ -15,14 +15,16 @@ class _ReferenceScreenState extends State<ReferenceScreen>
     with TickerProviderStateMixin {
   late final TabController _tabController;
   bool _loading = true;
+  List<GymModel> _gyms = [];
   List<CountryModel> _countries = [];
   List<CityReferenceModel> _cities = [];
   List<TrainingTypeReferenceModel> _trainingTypes = [];
+  List<ShopProductReferenceModel> _shopProducts = [];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _load();
   }
 
@@ -36,15 +38,19 @@ class _ReferenceScreenState extends State<ReferenceScreen>
     setState(() => _loading = true);
     try {
       final results = await Future.wait([
+        GymService.getAll(),
         ReferenceService.getCountries(),
         ReferenceService.getCityDetails(),
         ReferenceService.getTrainingTypes(),
+        ReferenceService.getShopProducts(),
       ]);
       if (!mounted) return;
       setState(() {
-        _countries = results[0] as List<CountryModel>;
-        _cities = results[1] as List<CityReferenceModel>;
-        _trainingTypes = results[2] as List<TrainingTypeReferenceModel>;
+        _gyms = results[0] as List<GymModel>;
+        _countries = results[1] as List<CountryModel>;
+        _cities = results[2] as List<CityReferenceModel>;
+        _trainingTypes = results[3] as List<TrainingTypeReferenceModel>;
+        _shopProducts = results[4] as List<ShopProductReferenceModel>;
       });
     } catch (e) {
       if (!mounted) return;
@@ -306,6 +312,151 @@ class _ReferenceScreenState extends State<ReferenceScreen>
     }
   }
 
+  Future<void> _showShopProductDialog([ShopProductReferenceModel? item]) async {
+    final nameCtrl = TextEditingController(text: item?.name ?? '');
+    final categoryCtrl = TextEditingController(text: item?.category ?? '');
+    final descriptionCtrl = TextEditingController(text: item?.description ?? '');
+    final priceCtrl = TextEditingController(
+      text: item == null ? '' : item.price.toStringAsFixed(2),
+    );
+    final stockCtrl = TextEditingController(
+      text: item?.stockQuantity.toString() ?? '0',
+    );
+    final emojiCtrl = TextEditingController(text: item?.emoji ?? '');
+    var isActive = item?.isActive ?? true;
+    int? selectedGymId = item?.gymId ?? (_gyms.isNotEmpty ? _gyms.first.id : null);
+    final formKey = GlobalKey<FormState>();
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(item == null ? 'Novi shop proizvod' : 'Uredi shop proizvod'),
+          content: SizedBox(
+            width: 500,
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(labelText: 'Naziv proizvoda'),
+                      validator: (value) => (value == null || value.trim().length < 2)
+                          ? 'Naziv mora imati najmanje 2 slova.'
+                          : null,
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      initialValue: selectedGymId,
+                      decoration: const InputDecoration(labelText: 'Teretana'),
+                      items: _gyms
+                          .map((gym) => DropdownMenuItem<int>(
+                                value: gym.id,
+                                child: Text(gym.name),
+                              ))
+                          .toList(),
+                      onChanged: (value) => setDialogState(() => selectedGymId = value),
+                      validator: (value) => value == null ? 'Odaberi teretanu.' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: categoryCtrl,
+                      decoration: const InputDecoration(labelText: 'Kategorija'),
+                      validator: (value) => (value == null || value.trim().length < 2)
+                          ? 'Kategorija mora imati najmanje 2 slova.'
+                          : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: priceCtrl,
+                      decoration: const InputDecoration(labelText: 'Cijena'),
+                      validator: (value) {
+                        final parsed = double.tryParse((value ?? '').replaceAll(',', '.'));
+                        return parsed == null || parsed <= 0 ? 'Unesi ispravnu cijenu.' : null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: stockCtrl,
+                      decoration: const InputDecoration(labelText: 'Stanje zaliha'),
+                      validator: (value) {
+                        final parsed = int.tryParse(value ?? '');
+                        return parsed == null || parsed < 0 ? 'Unesi ispravnu zalihu.' : null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: emojiCtrl,
+                      decoration: const InputDecoration(labelText: 'Emoji (opcionalno)'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: descriptionCtrl,
+                      decoration: const InputDecoration(labelText: 'Opis'),
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Aktivan proizvod'),
+                      value: isActive,
+                      onChanged: (value) => setDialogState(() => isActive = value),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Odustani'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
+                final dto = {
+                  'name': nameCtrl.text.trim(),
+                  'category': categoryCtrl.text.trim(),
+                  'description': descriptionCtrl.text.trim().isEmpty
+                      ? null
+                      : descriptionCtrl.text.trim(),
+                  'price': double.parse(priceCtrl.text.trim().replaceAll(',', '.')),
+                  'stockQuantity': int.parse(stockCtrl.text.trim()),
+                  'emoji': emojiCtrl.text.trim().isEmpty ? null : emojiCtrl.text.trim(),
+                  'gymId': selectedGymId,
+                  'isActive': isActive,
+                };
+                try {
+                  if (item == null) {
+                    await ReferenceService.createShopProduct(dto);
+                  } else {
+                    await ReferenceService.updateShopProduct(item.id, dto);
+                  }
+                  if (ctx.mounted) Navigator.pop(ctx, true);
+                } catch (e) {
+                  if (!ctx.mounted) return;
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(content: Text(e.toString()), backgroundColor: kRed),
+                  );
+                }
+              },
+              child: const Text('Sacuvaj'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (saved == true) {
+      await _load();
+      if (!mounted) return;
+      _showMessage(item == null ? 'Shop proizvod dodan.' : 'Shop proizvod azuriran.');
+    }
+  }
+
   Future<void> _deleteItem({
     required String label,
     required Future<void> Function() action,
@@ -356,6 +507,7 @@ class _ReferenceScreenState extends State<ReferenceScreen>
               Tab(text: 'Drzave'),
               Tab(text: 'Gradovi'),
               Tab(text: 'Tipovi treninga'),
+              Tab(text: 'Shop proizvodi'),
             ],
           ),
           const SizedBox(height: 18),
@@ -411,6 +563,23 @@ class _ReferenceScreenState extends State<ReferenceScreen>
                         itemBuilder: (item) => ListTile(
                           title: Text(item.name),
                           subtitle: Text(item.description ?? 'Bez opisa'),
+                        ),
+                      ),
+                      _ReferenceList<ShopProductReferenceModel>(
+                        title: 'Shop proizvodi',
+                        buttonLabel: 'Novi proizvod',
+                        items: _shopProducts,
+                        onCreate: () => _showShopProductDialog(),
+                        onEdit: _showShopProductDialog,
+                        onDelete: (item) => _deleteItem(
+                          label: item.name,
+                          action: () => ReferenceService.deleteShopProduct(item.id),
+                        ),
+                        itemBuilder: (item) => ListTile(
+                          title: Text(item.name),
+                          subtitle: Text(
+                            '${item.gymName} • ${item.category} • ${item.price.toStringAsFixed(0)} KM • Zaliha ${item.stockQuantity}${item.isActive ? '' : ' • Neaktivan'}',
+                          ),
                         ),
                       ),
                     ],

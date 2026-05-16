@@ -76,6 +76,7 @@ public sealed class StripeWebhookService(
 
         await FulfillMembershipAsync(payment, session.Metadata, $"checkout session {session.Id}");
         await FulfillSessionReservationAsync(payment, session.Metadata, $"checkout session {session.Id}");
+        await FulfillShopOrderAsync(payment, session.Metadata, $"checkout session {session.Id}");
 
         payment.Status = PaymentStatus.Succeeded;
         payment.CompletedAt ??= DateTime.UtcNow;
@@ -109,6 +110,7 @@ public sealed class StripeWebhookService(
         payment.StripePaymentIntentId = paymentIntent.Id;
         await FulfillMembershipAsync(payment, paymentIntent.Metadata, $"payment intent {paymentIntent.Id}");
         await FulfillSessionReservationAsync(payment, paymentIntent.Metadata, $"payment intent {paymentIntent.Id}");
+        await FulfillShopOrderAsync(payment, paymentIntent.Metadata, $"payment intent {paymentIntent.Id}");
         payment.Status = PaymentStatus.Succeeded;
         payment.CompletedAt ??= DateTime.UtcNow;
         ApplySessionAccessWindow(payment, paymentIntent.Metadata);
@@ -287,6 +289,53 @@ public sealed class StripeWebhookService(
 
         var start = payment.CompletedAt ?? DateTime.UtcNow;
         payment.SessionAccessUntil = start.AddDays(durationDays.Value);
+    }
+
+    private async Task FulfillShopOrderAsync(Payment payment, IDictionary<string, string>? metadata, string source)
+    {
+        if (payment.Type != PaymentType.Shop)
+        {
+            return;
+        }
+
+        ShopOrder? order = null;
+        if (metadata is not null &&
+            metadata.TryGetValue("shopOrderId", out var orderIdRaw) &&
+            int.TryParse(orderIdRaw, out var orderId))
+        {
+            order = await context.ShopOrders
+                .Include(o => o.Items)
+                    .ThenInclude(i => i.ShopProduct)
+                .FirstOrDefaultAsync(o => o.Id == orderId && o.PaymentId == payment.Id);
+        }
+
+        order ??= await context.ShopOrders
+            .Include(o => o.Items)
+                .ThenInclude(i => i.ShopProduct)
+            .FirstOrDefaultAsync(o => o.PaymentId == payment.Id);
+
+        if (order is null)
+        {
+            logger.LogWarning("Stripe shop payment {PaymentId} from {Source} is missing associated order.", payment.Id, source);
+            return;
+        }
+
+        if (order.FulfilledAt.HasValue)
+        {
+            return;
+        }
+
+        foreach (var item in order.Items)
+        {
+            if (item.ShopProduct.StockQuantity < item.Quantity)
+            {
+                throw new InvalidOperationException($"Shop proizvod \"{item.ShopProduct.Name}\" nema dovoljno zaliha za fulfillment.");
+            }
+
+            item.ShopProduct.StockQuantity -= item.Quantity;
+        }
+
+        order.FulfilledAt = DateTime.UtcNow;
     }
 
     private async Task NotifyPaymentOutcomeAsync(Payment payment, bool succeeded)

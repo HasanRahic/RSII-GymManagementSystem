@@ -442,3 +442,43 @@ class TrainingTypeReferenceModel {
         description: j['description']?.toString(),
       );
 }
+
+class ShopProductReferenceModel {
+  final int id;
+  final String name;
+  final String category;
+  final String? description;
+  final double price;
+  final int stockQuantity;
+  final String? emoji;
+  final bool isActive;
+  final int gymId;
+  final String gymName;
+
+  ShopProductReferenceModel({
+    required this.id,
+    required this.name,
+    required this.category,
+    required this.description,
+    required this.price,
+    required this.stockQuantity,
+    required this.emoji,
+    required this.isActive,
+    required this.gymId,
+    required this.gymName,
+  });
+
+  factory ShopProductReferenceModel.fromJson(Map<String, dynamic> j) =>
+      ShopProductReferenceModel(
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        name: (j['name'] ?? '').toString(),
+        category: (j['category'] ?? '').toString(),
+        description: j['description']?.toString(),
+        price: (j['price'] as num?)?.toDouble() ?? 0,
+        stockQuantity: (j['stockQuantity'] as num?)?.toInt() ?? 0,
+        emoji: j['emoji']?.toString(),
+        isActive: j['isActive'] == true,
+        gymId: (j['gymId'] as num?)?.toInt() ?? 0,
+        gymName: (j['gymName'] ?? '').toString(),
+      );
+}

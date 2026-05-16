@@ -218,7 +218,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         TextFormField(
                           controller: _userCtrl,
                           decoration: const InputDecoration(
-                            labelText: 'Korisnicko ime',
+                            labelText: 'Korisnicko ime ili email',
                             prefixIcon: Icon(Icons.person_outline),
                             border: OutlineInputBorder(),
                           ),

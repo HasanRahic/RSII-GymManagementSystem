@@ -81,6 +81,24 @@ public class PaymentsController(
         }
     }
 
+    [HttpPost("shop-checkout")]
+    public async Task<IActionResult> CreateShopCheckout([FromBody] CreateShopOrderDto dto)
+    {
+        var userId = User.GetUserId();
+        if (!userId.HasValue)
+            return Unauthorized();
+
+        try
+        {
+            var result = await paymentAppService.CreateShopCheckoutAsync(userId.Value, dto, GetDomainUrl());
+            return Ok(result);
+        }
+        catch (StripeException ex)
+        {
+            return BadRequest(new { message = $"Stripe greska: {ex.Message}" });
+        }
+    }
+
     [HttpPost("{paymentId:int}/retry-checkout")]
     public async Task<IActionResult> RetryCheckout(int paymentId)
     {

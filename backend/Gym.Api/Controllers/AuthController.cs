@@ -28,10 +28,15 @@ public class AuthController(
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginDto dto)
     {
-        var result = await authService.LoginAsync(dto);
-        if (result is null)
-            return Unauthorized(new { message = "Invalid username or password." });
-        return Ok(result);
+        try
+        {
+            var result = await authService.LoginAsync(dto);
+            return Ok(result);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(new { message = ex.Message });
+        }
     }
 
     [Authorize]

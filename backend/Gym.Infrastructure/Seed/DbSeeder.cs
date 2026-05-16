@@ -16,6 +16,7 @@ public static class DbSeeder
         if (await context.Countries.AnyAsync())
         {
             await EnsureGymCatalogAsync(context);
+            await EnsureShopProductCatalogAsync(context);
             await EnsureMembershipPlanCatalogAsync(context);
             await EnsureRecurringGroupSessionCatalogAsync(context);
             await EnsureBadgeCatalogAsync(context);
@@ -100,6 +101,36 @@ public static class DbSeeder
             Latitude = 45.8040, Longitude = 15.9670
         };
         context.Gyms.AddRange(gym1, gym2, gym3, gym4, gym5);
+        await context.SaveChangesAsync();
+
+        context.ShopProducts.AddRange(
+            new ShopProduct { Name = "Whey Protein", Category = "Suplementi", Price = 89m, StockQuantity = 24, Emoji = "🥤", GymId = gym1.Id },
+            new ShopProduct { Name = "Creatine Monohydrate", Category = "Suplementi", Price = 49m, StockQuantity = 30, Emoji = "⚗️", GymId = gym1.Id },
+            new ShopProduct { Name = "FitZone Majica", Category = "Odjeca", Price = 35m, StockQuantity = 18, Emoji = "👕", GymId = gym1.Id },
+            new ShopProduct { Name = "Muske Rukavice", Category = "Oprema", Price = 29m, StockQuantity = 12, Emoji = "🧤", GymId = gym1.Id },
+            new ShopProduct { Name = "Shaker 700ml", Category = "Oprema", Price = 15m, StockQuantity = 25, Emoji = "🧋", GymId = gym1.Id },
+
+            new ShopProduct { Name = "Creatine Monohydrate", Category = "Suplementi", Price = 49m, StockQuantity = 26, Emoji = "⚗️", GymId = gym2.Id },
+            new ShopProduct { Name = "Power Resistance Band", Category = "Oprema", Price = 24m, StockQuantity = 16, Emoji = "🧵", GymId = gym2.Id },
+            new ShopProduct { Name = "BCAA Recovery", Category = "Suplementi", Price = 39m, StockQuantity = 22, Emoji = "💧", GymId = gym2.Id },
+            new ShopProduct { Name = "Gym Shorts", Category = "Odjeca", Price = 42m, StockQuantity = 14, Emoji = "🩳", GymId = gym2.Id },
+            new ShopProduct { Name = "Shaker 700ml", Category = "Oprema", Price = 15m, StockQuantity = 20, Emoji = "🧋", GymId = gym2.Id },
+
+            new ShopProduct { Name = "BCAA Recovery", Category = "Suplementi", Price = 39m, StockQuantity = 20, Emoji = "💧", GymId = gym3.Id },
+            new ShopProduct { Name = "Gym Shorts", Category = "Odjeca", Price = 42m, StockQuantity = 15, Emoji = "🩳", GymId = gym3.Id },
+            new ShopProduct { Name = "Muske Rukavice", Category = "Oprema", Price = 29m, StockQuantity = 10, Emoji = "🧤", GymId = gym3.Id },
+            new ShopProduct { Name = "Shaker 700ml", Category = "Oprema", Price = 15m, StockQuantity = 18, Emoji = "🧋", GymId = gym3.Id },
+            new ShopProduct { Name = "Yoga Prostirka", Category = "Oprema", Price = 55m, StockQuantity = 9, Emoji = "🧘", GymId = gym3.Id },
+            new ShopProduct { Name = "IronGym Pojas", Category = "Oprema", Price = 47m, StockQuantity = 11, Emoji = "🥋", GymId = gym3.Id },
+
+            new ShopProduct { Name = "Arena Towel", Category = "Oprema", Price = 19m, StockQuantity = 30, Emoji = "🧺", GymId = gym4.Id },
+            new ShopProduct { Name = "HIIT Bottle", Category = "Oprema", Price = 17m, StockQuantity = 22, Emoji = "🧋", GymId = gym4.Id },
+            new ShopProduct { Name = "Arena Hoodie", Category = "Odjeca", Price = 58m, StockQuantity = 12, Emoji = "🧥", GymId = gym4.Id },
+
+            new ShopProduct { Name = "Titan Hoodie", Category = "Odjeca", Price = 64m, StockQuantity = 16, Emoji = "🧥", GymId = gym5.Id },
+            new ShopProduct { Name = "Titan Premium Whey", Category = "Suplementi", Price = 99m, StockQuantity = 20, Emoji = "🥤", GymId = gym5.Id },
+            new ShopProduct { Name = "Lifting Straps", Category = "Oprema", Price = 27m, StockQuantity = 18, Emoji = "🏋️", GymId = gym5.Id }
+        );
         await context.SaveChangesAsync();
 
         // Postavi primarnu teretanu
@@ -543,6 +574,77 @@ public static class DbSeeder
             if (!exists)
             {
                 context.TrainingSessions.Add(session);
+            }
+        }
+
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task EnsureShopProductCatalogAsync(GymDbContext context)
+    {
+        var gyms = await context.Gyms
+            .AsNoTracking()
+            .Select(g => new { g.Id, g.Name })
+            .ToListAsync();
+
+        if (gyms.Count == 0)
+        {
+            return;
+        }
+
+        var catalog = new[]
+        {
+            ("FitZone Sarajevo", "Whey Protein", "Suplementi", 89m, 24, "🥤"),
+            ("FitZone Sarajevo", "Creatine Monohydrate", "Suplementi", 49m, 30, "⚗️"),
+            ("FitZone Sarajevo", "FitZone Majica", "Odjeca", 35m, 18, "👕"),
+            ("FitZone Sarajevo", "Muske Rukavice", "Oprema", 29m, 12, "🧤"),
+            ("FitZone Sarajevo", "Shaker 700ml", "Oprema", 15m, 25, "🧋"),
+            ("PowerHouse Mostar", "Creatine Monohydrate", "Suplementi", 49m, 26, "⚗️"),
+            ("PowerHouse Mostar", "Power Resistance Band", "Oprema", 24m, 16, "🧵"),
+            ("PowerHouse Mostar", "BCAA Recovery", "Suplementi", 39m, 22, "💧"),
+            ("PowerHouse Mostar", "Gym Shorts", "Odjeca", 42m, 14, "🩳"),
+            ("PowerHouse Mostar", "Shaker 700ml", "Oprema", 15m, 20, "🧋"),
+            ("IronGym Banja Luka", "BCAA Recovery", "Suplementi", 39m, 20, "💧"),
+            ("IronGym Banja Luka", "Gym Shorts", "Odjeca", 42m, 15, "🩳"),
+            ("IronGym Banja Luka", "Muske Rukavice", "Oprema", 29m, 10, "🧤"),
+            ("IronGym Banja Luka", "Shaker 700ml", "Oprema", 15m, 18, "🧋"),
+            ("IronGym Banja Luka", "Yoga Prostirka", "Oprema", 55m, 9, "🧘"),
+            ("IronGym Banja Luka", "IronGym Pojas", "Oprema", 47m, 11, "🥋"),
+            ("Arena Mostar", "Arena Towel", "Oprema", 19m, 30, "🧺"),
+            ("Arena Mostar", "HIIT Bottle", "Oprema", 17m, 22, "🧋"),
+            ("Arena Mostar", "Arena Hoodie", "Odjeca", 58m, 12, "🧥"),
+            ("Titan Zagreb", "Titan Hoodie", "Odjeca", 64m, 16, "🧥"),
+            ("Titan Zagreb", "Titan Premium Whey", "Suplementi", 99m, 20, "🥤"),
+            ("Titan Zagreb", "Lifting Straps", "Oprema", 27m, 18, "🏋️")
+        };
+
+        foreach (var item in catalog)
+        {
+            var gymId = gyms.FirstOrDefault(g => g.Name == item.Item1)?.Id;
+            if (!gymId.HasValue)
+            {
+                continue;
+            }
+
+            var existing = await context.ShopProducts
+                .FirstOrDefaultAsync(p => p.GymId == gymId.Value && p.Name == item.Item2);
+
+            if (existing is null)
+            {
+                context.ShopProducts.Add(new ShopProduct
+                {
+                    Name = item.Item2,
+                    Category = item.Item3,
+                    Price = item.Item4,
+                    StockQuantity = item.Item5,
+                    Emoji = item.Item6,
+                    GymId = gymId.Value,
+                    IsActive = true
+                });
+            }
+            else if (existing.StockQuantity < 0)
+            {
+                existing.StockQuantity = 0;
             }
         }
 

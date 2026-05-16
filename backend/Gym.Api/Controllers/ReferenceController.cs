@@ -21,6 +21,14 @@ public class ReferenceController(IReferenceService referenceService) : Controlle
     public async Task<IActionResult> GetTrainingTypes([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
         => Ok(await referenceService.GetTrainingTypesAsync(page, pageSize));
 
+    [HttpGet("shop-products")]
+    public async Task<IActionResult> GetShopProducts(
+        [FromQuery] int? gymId,
+        [FromQuery] bool activeOnly = true,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50)
+        => Ok(await referenceService.GetShopProductsAsync(gymId, activeOnly, page, pageSize));
+
     [HttpPost("countries")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateCountry([FromBody] CreateCountryDto dto)
@@ -72,6 +80,24 @@ public class ReferenceController(IReferenceService referenceService) : Controlle
     public async Task<IActionResult> DeleteTrainingType(int id)
     {
         await referenceService.DeleteTrainingTypeAsync(id);
+        return NoContent();
+    }
+
+    [HttpPost("shop-products")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> CreateShopProduct([FromBody] CreateShopProductDto dto)
+        => Ok(await referenceService.CreateShopProductAsync(dto));
+
+    [HttpPut("shop-products/{id:int}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> UpdateShopProduct(int id, [FromBody] UpdateShopProductDto dto)
+        => Ok(await referenceService.UpdateShopProductAsync(id, dto));
+
+    [HttpDelete("shop-products/{id:int}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> DeleteShopProduct(int id)
+    {
+        await referenceService.DeleteShopProductAsync(id);
         return NoContent();
     }
 }
