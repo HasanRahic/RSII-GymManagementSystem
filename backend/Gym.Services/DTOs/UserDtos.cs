@@ -4,26 +4,26 @@ using Gym.Core.Enums;
 namespace Gym.Services.DTOs;
 
 public record RegisterDto(
-    [property: Required, StringLength(50, MinimumLength = 2)]
+    [Required, StringLength(50, MinimumLength = 2)]
     string FirstName,
-    [property: Required, StringLength(50, MinimumLength = 2)]
+    [Required, StringLength(50, MinimumLength = 2)]
     string LastName,
-    [property: Required, StringLength(50, MinimumLength = 3)]
+    [Required, StringLength(50, MinimumLength = 3)]
     string Username,
-    [property: Required, EmailAddress, StringLength(256)]
+    [Required, EmailAddress, StringLength(256)]
     string Email,
-    [property: Required, MinLength(8)]
+    [Required, MinLength(8)]
     string Password,
-    [property: Phone]
+    [Phone]
     string? PhoneNumber,
     DateTime? DateOfBirth,
     int? CityId
 );
 
 public record LoginDto(
-    [property: Required]
+    [Required]
     string Username,
-    [property: Required]
+    [Required]
     string Password);
 
 public record AuthResponseDto(
@@ -54,13 +54,13 @@ public record UserDto(
 );
 
 public record UpdateUserDto(
-    [property: Required, StringLength(50, MinimumLength = 2)]
+    [Required, StringLength(50, MinimumLength = 2)]
     string FirstName,
-    [property: Required, StringLength(50, MinimumLength = 2)]
+    [Required, StringLength(50, MinimumLength = 2)]
     string LastName,
-    [property: Required, EmailAddress, StringLength(256)]
+    [Required, EmailAddress, StringLength(256)]
     string Email,
-    [property: Phone]
+    [Phone]
     string? PhoneNumber,
     DateTime? DateOfBirth,
     int? CityId,
@@ -70,8 +70,8 @@ public record UpdateUserDto(
 
 public record ChangePasswordDto(
     string? OldPassword,
-    [property: Required, MinLength(8)]
+    [Required, MinLength(8)]
     string NewPassword,
-    [property: Required, MinLength(8)]
+    [Required, MinLength(8)]
     string ConfirmPassword
 );

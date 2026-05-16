@@ -24,22 +24,22 @@ public record TrainingSessionDto(
 );
 
 public record CreateTrainingSessionDto(
-    [property: Required, StringLength(100, MinimumLength = 3)]
+    [Required, StringLength(100, MinimumLength = 3)]
     string Title,
-    [property: StringLength(500)]
+    [StringLength(500)]
     string? Description,
     SessionType Type,
-    [property: DataType(DataType.Date)]
+    [DataType(DataType.Date)]
     DateTime Date,
     TimeOnly StartTime,
     TimeOnly EndTime,
-    [property: Range(1, 500)]
+    [Range(1, 500)]
     int MaxParticipants,
-    [property: Range(typeof(decimal), "0", "1000000")]
+    [Range(typeof(decimal), "0", "1000000")]
     decimal Price,
-    [property: Range(1, int.MaxValue)]
+    [Range(1, int.MaxValue)]
     int GymId,
-    [property: Range(1, int.MaxValue)]
+    [Range(1, int.MaxValue)]
     int TrainingTypeId,
     int? TrainerId = null
 );

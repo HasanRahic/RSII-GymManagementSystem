@@ -15,26 +15,26 @@ public record MembershipPlanDto(
 );
 
 public record CreateMembershipPlanDto(
-    [property: Required, StringLength(100, MinimumLength = 2)]
+    [Required, StringLength(100, MinimumLength = 2)]
     string Name,
-    [property: StringLength(500)]
+    [StringLength(500)]
     string? Description,
-    [property: Range(1, 3650)]
+    [Range(1, 3650)]
     int DurationDays,
-    [property: Range(typeof(decimal), "0.01", "1000000")]
+    [Range(typeof(decimal), "0.01", "1000000")]
     decimal Price,
-    [property: Range(1, int.MaxValue)]
+    [Range(1, int.MaxValue)]
     int GymId
 );
 
 public record UpdateMembershipPlanDto(
-    [property: Required, StringLength(100, MinimumLength = 2)]
+    [Required, StringLength(100, MinimumLength = 2)]
     string Name,
-    [property: StringLength(500)]
+    [StringLength(500)]
     string? Description,
-    [property: Range(1, 3650)]
+    [Range(1, 3650)]
     int DurationDays,
-    [property: Range(typeof(decimal), "0.01", "1000000")]
+    [Range(typeof(decimal), "0.01", "1000000")]
     decimal Price,
     bool IsActive
 );
