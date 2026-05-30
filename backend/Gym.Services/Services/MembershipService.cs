@@ -33,10 +33,12 @@ public class MembershipService : IMembershipService
 
     public async Task<MembershipPlanDto> CreatePlanAsync(CreateMembershipPlanDto dto)
     {
+        await ValidatePlanAsync(dto.GymId, dto.DurationDays, dto.Price);
+
         var plan = new MembershipPlan
         {
-            Name = dto.Name,
-            Description = dto.Description,
+            Name = dto.Name.Trim(),
+            Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim(),
             DurationDays = dto.DurationDays,
             Price = dto.Price,
             GymId = dto.GymId
@@ -53,8 +55,10 @@ public class MembershipService : IMembershipService
         var plan = await _context.MembershipPlans.Include(p => p.Gym).FirstOrDefaultAsync(p => p.Id == id)
             ?? throw new KeyNotFoundException("Plan nije pronadjen.");
 
-        plan.Name = dto.Name;
-        plan.Description = dto.Description;
+        await ValidatePlanAsync(plan.GymId, dto.DurationDays, dto.Price);
+
+        plan.Name = dto.Name.Trim();
+        plan.Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim();
         plan.DurationDays = dto.DurationDays;
         plan.Price = dto.Price;
         plan.IsActive = dto.IsActive;
@@ -201,6 +205,19 @@ public class MembershipService : IMembershipService
 
     private static MembershipPlanDto ToPlanDto(MembershipPlan p) =>
         new(p.Id, p.Name, p.Description, p.DurationDays, p.Price, p.IsActive, p.GymId, p.Gym.Name);
+
+    private async Task ValidatePlanAsync(int gymId, int durationDays, decimal price)
+    {
+        if (durationDays <= 0)
+            throw new InvalidOperationException("Trajanje clanarine mora biti vece od nule.");
+
+        if (price <= 0m)
+            throw new InvalidOperationException("Cijena clanarine mora biti veca od nule.");
+
+        var gymExists = await _context.Gyms.AnyAsync(g => g.Id == gymId);
+        if (!gymExists)
+            throw new InvalidOperationException("Odabrana teretana ne postoji.");
+    }
 
     private async Task ExpireEndedMembershipsAsync(int userId)
     {

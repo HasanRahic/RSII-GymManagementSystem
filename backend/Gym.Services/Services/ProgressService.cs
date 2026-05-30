@@ -16,25 +16,28 @@ public class ProgressService : IProgressService
     {
         var query = _context.ProgressMeasurements.Where(m => m.UserId == userId);
         if (from.HasValue) query = query.Where(m => m.Date >= from.Value);
-        if (to.HasValue)   query = query.Where(m => m.Date <= to.Value);
+        if (to.HasValue) query = query.Where(m => m.Date <= to.Value);
 
         return (await query.OrderBy(m => m.Date).ToListAsync()).Select(ToDto);
     }
 
     public async Task<ProgressMeasurementDto> AddMeasurementAsync(int userId, CreateProgressMeasurementDto dto)
     {
+        if (dto.Date.Date > DateTime.UtcNow.Date)
+            throw new InvalidOperationException("Datum mjerenja ne moze biti u buducnosti.");
+
         var measurement = new ProgressMeasurement
         {
-            UserId         = userId,
-            Date           = dto.Date,
-            WeightKg       = dto.WeightKg,
+            UserId = userId,
+            Date = dto.Date,
+            WeightKg = dto.WeightKg,
             BodyFatPercent = dto.BodyFatPercent,
-            ChestCm        = dto.ChestCm,
-            WaistCm        = dto.WaistCm,
-            HipsCm         = dto.HipsCm,
-            ArmCm          = dto.ArmCm,
-            LegCm          = dto.LegCm,
-            Notes          = dto.Notes
+            ChestCm = dto.ChestCm,
+            WaistCm = dto.WaistCm,
+            HipsCm = dto.HipsCm,
+            ArmCm = dto.ArmCm,
+            LegCm = dto.LegCm,
+            Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes.Trim()
         };
         _context.ProgressMeasurements.Add(measurement);
         await _context.SaveChangesAsync();
@@ -45,7 +48,7 @@ public class ProgressService : IProgressService
     {
         var m = await _context.ProgressMeasurements
             .FirstOrDefaultAsync(m => m.Id == measurementId && m.UserId == userId)
-            ?? throw new KeyNotFoundException("Mjerenje nije pronađeno.");
+            ?? throw new KeyNotFoundException("Mjerenje nije pronadjeno.");
 
         _context.ProgressMeasurements.Remove(m);
         await _context.SaveChangesAsync();

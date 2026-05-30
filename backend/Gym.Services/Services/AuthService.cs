@@ -1,5 +1,5 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Globalization;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Gym.Core.Entities;
@@ -29,19 +29,25 @@ public class AuthService : IAuthService
 
     public async Task<AuthResponseDto> RegisterAsync(RegisterDto dto)
     {
-        if (await _context.Users.AnyAsync(u => u.Email == dto.Email))
+        var normalizedEmail = dto.Email.Trim();
+        var normalizedUsername = dto.Username.Trim();
+
+        if (dto.CityId.HasValue && !await _context.Cities.AnyAsync(c => c.Id == dto.CityId.Value))
+            throw new InvalidOperationException("Odabrani grad ne postoji.");
+
+        if (await _context.Users.AnyAsync(u => u.Email.ToLower() == normalizedEmail.ToLower()))
             throw new InvalidOperationException("Email je vec zauzet.");
 
-        if (await _context.Users.AnyAsync(u => u.Username == dto.Username))
+        if (await _context.Users.AnyAsync(u => u.Username.ToLower() == normalizedUsername.ToLower()))
             throw new InvalidOperationException("Korisnicko ime je vec zauzeto.");
 
         var user = new User
         {
-            FirstName = dto.FirstName,
-            LastName = dto.LastName,
-            Username = dto.Username,
-            Email = dto.Email,
-            PhoneNumber = dto.PhoneNumber,
+            FirstName = dto.FirstName.Trim(),
+            LastName = dto.LastName.Trim(),
+            Username = normalizedUsername,
+            Email = normalizedEmail,
+            PhoneNumber = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim(),
             DateOfBirth = dto.DateOfBirth,
             CityId = dto.CityId,
             Role = UserRole.Member,

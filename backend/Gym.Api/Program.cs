@@ -134,7 +134,9 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Notification publisher (RabbitMQ)
-builder.Services.AddSingleton<INotificationPublisher, RabbitMqNotificationPublisher>();
+builder.Services.AddSingleton<RabbitMqNotificationPublisher>();
+builder.Services.AddSingleton<INotificationPublisher>(sp => sp.GetRequiredService<RabbitMqNotificationPublisher>());
+builder.Services.AddSingleton<IUserCommunicationPublisher>(sp => sp.GetRequiredService<RabbitMqNotificationPublisher>());
 builder.Services.AddScoped<IStripePaymentSyncService, StripePaymentSyncService>();
 
 // CORS – allow Flutter apps

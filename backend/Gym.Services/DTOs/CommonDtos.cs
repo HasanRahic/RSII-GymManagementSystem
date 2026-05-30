@@ -29,9 +29,7 @@ public record CheckoutSessionResultDto(
 );
 
 public record ShopOrderItemDto(
-    int? ProductId,
-    [Required, StringLength(120, MinimumLength = 2)] string Name,
-    decimal UnitPrice,
+    [Range(1, int.MaxValue)] int? ProductId,
     [Range(1, 99)] int Quantity
 );
 

@@ -11,11 +11,16 @@ public class TrainerApplicationService : ITrainerApplicationService
 {
     private readonly GymDbContext _context;
     private readonly INotificationService _notificationService;
+    private readonly IUserCommunicationPublisher _communicationPublisher;
 
-    public TrainerApplicationService(GymDbContext context, INotificationService notificationService)
+    public TrainerApplicationService(
+        GymDbContext context,
+        INotificationService notificationService,
+        IUserCommunicationPublisher communicationPublisher)
     {
         _context = context;
         _notificationService = notificationService;
+        _communicationPublisher = communicationPublisher;
     }
 
     public async Task<IEnumerable<TrainerApplicationDto>> GetAllAsync(ApplicationStatus? status, int page = 1, int pageSize = 20)
@@ -109,6 +114,18 @@ public class TrainerApplicationService : ITrainerApplicationService
             "TrainerApplication",
             "TrainerApplication",
             application.Id));
+
+        if (!string.IsNullOrWhiteSpace(application.User.Email))
+        {
+            var emailBody = dto.Status == ApplicationStatus.Approved
+                ? $"Pozdrav {application.User.FirstName},\n\nVas zahtjev za trenera je odobren."
+                : $"Pozdrav {application.User.FirstName},\n\nVas zahtjev za trenera je odbijen.\n\nRazlog: {application.AdminNote}";
+
+            await _communicationPublisher.PublishAsync(
+                application.User.Email,
+                dto.Status == ApplicationStatus.Approved ? "Trainer zahtjev odobren" : "Trainer zahtjev odbijen",
+                emailBody);
+        }
 
         return ToDto(application);
     }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -20,22 +22,38 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   int _page = 1;
   bool _hasMore = true;
   final List<NotificationModel> _items = [];
+  Timer? _pollingTimer;
 
   @override
   void initState() {
     super.initState();
     _load(reset: true);
+    _pollingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted || _loadingMore) return;
+      unawaited(_load(reset: true, silent: true));
+    });
   }
 
-  Future<void> _load({required bool reset}) async {
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load({required bool reset, bool silent = false}) async {
     if (_loadingMore) return;
 
     if (reset) {
-      setState(() {
-        _loading = true;
+      if (!silent) {
+        setState(() {
+          _loading = true;
+          _page = 1;
+          _hasMore = true;
+        });
+      } else {
         _page = 1;
         _hasMore = true;
-      });
+      }
     } else {
       if (!_hasMore) return;
       setState(() => _loadingMore = true);
@@ -70,7 +88,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     } finally {
       if (mounted) {
         setState(() {
-          _loading = false;
+          if (!silent) {
+            _loading = false;
+          }
           _loadingMore = false;
         });
       }

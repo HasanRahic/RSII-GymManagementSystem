@@ -75,3 +75,53 @@ class HomeRecommendationSectionHeader extends StatelessWidget {
     );
   }
 }
+
+class HomeTrainingTypeFilterSection extends StatelessWidget {
+  final List<String> trainingTypes;
+  final String? selectedTrainingType;
+  final ValueChanged<String> onToggle;
+
+  const HomeTrainingTypeFilterSection({
+    super.key,
+    required this.trainingTypes,
+    required this.selectedTrainingType,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'TIP TRENINGA',
+          style: TextStyle(
+            color: Color(0xFF6B7280),
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: trainingTypes
+              .map(
+                (type) => ChoiceChip(
+                  label: Text(type),
+                  selected: selectedTrainingType == type,
+                  onSelected: (_) => onToggle(type),
+                ),
+              )
+              .toList(),
+        ),
+        if (trainingTypes.isEmpty) ...[
+          const SizedBox(height: 8),
+          const Text(
+            'Tipovi treninga ce biti prikazani kada budu dostupni iz baze.',
+            style: TextStyle(color: Color(0xFF8A94A8)),
+          ),
+        ],
+      ],
+    );
+  }
+}

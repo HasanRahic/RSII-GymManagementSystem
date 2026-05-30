@@ -11,11 +11,16 @@ public class TrainingSessionService : ITrainingSessionService
 {
     private readonly GymDbContext _context;
     private readonly INotificationService _notificationService;
+    private readonly IUserCommunicationPublisher _communicationPublisher;
 
-    public TrainingSessionService(GymDbContext context, INotificationService notificationService)
+    public TrainingSessionService(
+        GymDbContext context,
+        INotificationService notificationService,
+        IUserCommunicationPublisher communicationPublisher)
     {
         _context = context;
         _notificationService = notificationService;
+        _communicationPublisher = communicationPublisher;
     }
 
     public async Task<IEnumerable<TrainingSessionDto>> GetAllAsync(int? gymId, int? trainerId, int? typeId, int page = 1, int pageSize = 20)
@@ -153,6 +158,20 @@ public class TrainingSessionService : ITrainingSessionService
             "TrainingSession",
             sessionId));
 
+        var reservingUser = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => new { u.Email, u.FirstName })
+            .FirstOrDefaultAsync();
+
+        if (reservingUser is not null && !string.IsNullOrWhiteSpace(reservingUser.Email))
+        {
+            await _communicationPublisher.PublishAsync(
+                reservingUser.Email,
+                "Rezervacija potvrdjena",
+                $"Pozdrav {reservingUser.FirstName},\n\nUspjesno ste rezervisali termin '{session.Title}' za {session.Date:dd.MM.yyyy}.");
+        }
+
         return await LoadReservationDto(reservation.Id);
     }
 
@@ -184,6 +203,20 @@ public class TrainingSessionService : ITrainingSessionService
             "TrainingSessionReservationCancelled",
             "TrainingSession",
             sessionId));
+
+        var reservingUser = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => new { u.Email, u.FirstName })
+            .FirstOrDefaultAsync();
+
+        if (reservingUser is not null && !string.IsNullOrWhiteSpace(reservingUser.Email))
+        {
+            await _communicationPublisher.PublishAsync(
+                reservingUser.Email,
+                "Rezervacija otkazana",
+                $"Pozdrav {reservingUser.FirstName},\n\nVasa rezervacija za termin '{reservation.TrainingSession.Title}' je otkazana.");
+        }
     }
 
     public async Task<IEnumerable<SessionReservationDto>> GetUserReservationsAsync(int userId, int page = 1, int pageSize = 20)
@@ -403,7 +436,12 @@ public class TrainingSessionService : ITrainingSessionService
             .Where(s =>
                 s.IsActive &&
                 (!trainingTypeId.HasValue || s.TrainingTypeId == trainingTypeId.Value) &&
-                (string.IsNullOrWhiteSpace(normalizedCity) || s.Gym.City.Name.ToLower() == normalizedCity))
+                (string.IsNullOrWhiteSpace(normalizedCity) || s.Gym.City.Name.ToLower() == normalizedCity) &&
+                (string.IsNullOrWhiteSpace(normalizedSearch) ||
+                    (s.Trainer.FirstName + " " + s.Trainer.LastName).ToLower().Contains(normalizedSearch) ||
+                    s.Gym.Name.ToLower().Contains(normalizedSearch) ||
+                    s.Gym.City.Name.ToLower().Contains(normalizedSearch) ||
+                    s.TrainingType.Name.ToLower().Contains(normalizedSearch)))
             .Select(s => new TrainerProfileSessionRow(
                 s.TrainerId,
                 s.Trainer.FirstName,

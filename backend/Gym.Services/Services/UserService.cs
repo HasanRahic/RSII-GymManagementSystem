@@ -24,8 +24,8 @@ public class UserService : IUserService
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(u =>
                 u.FirstName.Contains(search) ||
-                u.LastName.Contains(search)  ||
-                u.Email.Contains(search)     ||
+                u.LastName.Contains(search) ||
+                u.Email.Contains(search) ||
                 u.Username.Contains(search));
 
         if (!string.IsNullOrWhiteSpace(role) &&
@@ -53,24 +53,30 @@ public class UserService : IUserService
     public async Task<UserDto> UpdateAsync(int id, UpdateUserDto dto)
     {
         var user = await _context.Users.FindAsync(id)
-            ?? throw new KeyNotFoundException("Korisnik nije pronađen.");
+            ?? throw new KeyNotFoundException("Korisnik nije pronadjen.");
 
         var normalizedEmail = dto.Email.Trim();
         if (string.IsNullOrWhiteSpace(normalizedEmail))
             throw new InvalidOperationException("Email je obavezan.");
 
-        var emailTaken = await _context.Users
-            .AnyAsync(u => u.Id != id && u.Email == normalizedEmail);
-        if (emailTaken)
-            throw new InvalidOperationException("Email je već zauzet.");
+        if (dto.CityId.HasValue && !await _context.Cities.AnyAsync(c => c.Id == dto.CityId.Value))
+            throw new InvalidOperationException("Odabrani grad ne postoji.");
 
-        user.FirstName      = dto.FirstName;
-        user.LastName       = dto.LastName;
-        user.Email          = normalizedEmail;
-        user.PhoneNumber    = dto.PhoneNumber;
-        user.DateOfBirth    = dto.DateOfBirth;
-        user.CityId         = dto.CityId;
-        user.PrimaryGymId   = dto.PrimaryGymId;
+        if (dto.PrimaryGymId.HasValue && !await _context.Gyms.AnyAsync(g => g.Id == dto.PrimaryGymId.Value))
+            throw new InvalidOperationException("Odabrana primarna teretana ne postoji.");
+
+        var emailTaken = await _context.Users
+            .AnyAsync(u => u.Id != id && u.Email.ToLower() == normalizedEmail.ToLower());
+        if (emailTaken)
+            throw new InvalidOperationException("Email je vec zauzet.");
+
+        user.FirstName = dto.FirstName.Trim();
+        user.LastName = dto.LastName.Trim();
+        user.Email = normalizedEmail;
+        user.PhoneNumber = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim();
+        user.DateOfBirth = dto.DateOfBirth;
+        user.CityId = dto.CityId;
+        user.PrimaryGymId = dto.PrimaryGymId;
         user.ProfileImageUrl = dto.ProfileImageUrl;
 
         await _context.SaveChangesAsync();
@@ -80,7 +86,7 @@ public class UserService : IUserService
     public async Task SetActiveAsync(int id, bool isActive)
     {
         var user = await _context.Users.FindAsync(id)
-            ?? throw new KeyNotFoundException("Korisnik nije pronađen.");
+            ?? throw new KeyNotFoundException("Korisnik nije pronadjen.");
 
         user.IsActive = isActive;
         await _context.SaveChangesAsync();

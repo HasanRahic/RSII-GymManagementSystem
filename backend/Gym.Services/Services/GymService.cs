@@ -50,19 +50,21 @@ public class GymService : IGymService
 
     public async Task<GymDto> CreateAsync(CreateGymDto dto)
     {
+        await ValidateGymAsync(dto.CityId, dto.OpenTime, dto.CloseTime, dto.Capacity, dto.Latitude, dto.Longitude);
+
         var gym = new GymFacility
         {
-            Name        = dto.Name,
-            Address     = dto.Address,
-            Description = dto.Description,
-            PhoneNumber = dto.PhoneNumber,
-            Email       = dto.Email,
-            OpenTime    = dto.OpenTime,
-            CloseTime   = dto.CloseTime,
-            Capacity    = dto.Capacity,
-            CityId      = dto.CityId,
-            Latitude    = dto.Latitude,
-            Longitude   = dto.Longitude
+            Name = dto.Name.Trim(),
+            Address = dto.Address.Trim(),
+            Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim(),
+            PhoneNumber = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim(),
+            Email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim(),
+            OpenTime = dto.OpenTime,
+            CloseTime = dto.CloseTime,
+            Capacity = dto.Capacity,
+            CityId = dto.CityId,
+            Latitude = dto.Latitude,
+            Longitude = dto.Longitude
         };
 
         _context.Gyms.Add(gym);
@@ -73,20 +75,22 @@ public class GymService : IGymService
     public async Task<GymDto> UpdateAsync(int id, UpdateGymDto dto)
     {
         var gym = await _context.Gyms.FindAsync(id)
-            ?? throw new KeyNotFoundException("Teretana nije pronađena.");
+            ?? throw new KeyNotFoundException("Teretana nije pronadjena.");
 
-        gym.Name        = dto.Name;
-        gym.Address     = dto.Address;
-        gym.Description = dto.Description;
-        gym.PhoneNumber = dto.PhoneNumber;
-        gym.Email       = dto.Email;
-        gym.OpenTime    = dto.OpenTime;
-        gym.CloseTime   = dto.CloseTime;
-        gym.Capacity    = dto.Capacity;
-        gym.CityId      = dto.CityId;
-        gym.Status      = dto.Status;
-        gym.Latitude    = dto.Latitude;
-        gym.Longitude   = dto.Longitude;
+        await ValidateGymAsync(dto.CityId, dto.OpenTime, dto.CloseTime, dto.Capacity, dto.Latitude, dto.Longitude);
+
+        gym.Name = dto.Name.Trim();
+        gym.Address = dto.Address.Trim();
+        gym.Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim();
+        gym.PhoneNumber = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim();
+        gym.Email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim();
+        gym.OpenTime = dto.OpenTime;
+        gym.CloseTime = dto.CloseTime;
+        gym.Capacity = dto.Capacity;
+        gym.CityId = dto.CityId;
+        gym.Status = dto.Status;
+        gym.Latitude = dto.Latitude;
+        gym.Longitude = dto.Longitude;
 
         await _context.SaveChangesAsync();
         return (await GetByIdAsync(id))!;
@@ -95,10 +99,35 @@ public class GymService : IGymService
     public async Task<GymDto> UpdateStatusAsync(int id, GymStatus status)
     {
         var gym = await _context.Gyms.FindAsync(id)
-            ?? throw new KeyNotFoundException("Teretana nije pronađena.");
+            ?? throw new KeyNotFoundException("Teretana nije pronadjena.");
 
         gym.Status = status;
         await _context.SaveChangesAsync();
         return (await GetByIdAsync(id))!;
+    }
+
+    private async Task ValidateGymAsync(
+        int cityId,
+        TimeOnly openTime,
+        TimeOnly closeTime,
+        int capacity,
+        double? latitude,
+        double? longitude)
+    {
+        if (capacity <= 0)
+            throw new InvalidOperationException("Kapacitet mora biti veci od nule.");
+
+        if (closeTime <= openTime)
+            throw new InvalidOperationException("Vrijeme zatvaranja mora biti nakon vremena otvaranja.");
+
+        if (latitude.HasValue && (latitude.Value < -90 || latitude.Value > 90))
+            throw new InvalidOperationException("Latitude mora biti izmedju -90 i 90.");
+
+        if (longitude.HasValue && (longitude.Value < -180 || longitude.Value > 180))
+            throw new InvalidOperationException("Longitude mora biti izmedju -180 i 180.");
+
+        var cityExists = await _context.Cities.AnyAsync(c => c.Id == cityId);
+        if (!cityExists)
+            throw new InvalidOperationException("Odabrani grad ne postoji.");
     }
 }

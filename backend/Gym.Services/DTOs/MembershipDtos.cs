@@ -57,6 +57,5 @@ public record UserMembershipDto(
 
 public record RenewMembershipDto(
     int UserId,
-    int MembershipPlanId,
-    decimal DiscountPercent
+    int MembershipPlanId
 );

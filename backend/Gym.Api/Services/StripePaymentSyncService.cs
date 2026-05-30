@@ -187,7 +187,7 @@ public class StripePaymentSyncService(
             return false;
         }
 
-        dto = new RenewMembershipDto(payment.UserId, planId, 0m);
+        dto = new RenewMembershipDto(payment.UserId, planId);
         return true;
     }
 

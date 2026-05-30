@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Gym.Services.Interfaces;
 using RabbitMQ.Client;
 
 namespace Gym.Api.Messaging;
@@ -11,32 +12,43 @@ public interface INotificationPublisher
     Task PublishAsync(NotificationMessage message);
 }
 
-public sealed class RabbitMqNotificationPublisher : INotificationPublisher, IAsyncDisposable
+public sealed class RabbitMqNotificationPublisher : INotificationPublisher, IUserCommunicationPublisher, IAsyncDisposable
 {
     private readonly string _queue;
+    private readonly IConfiguration _config;
     private readonly ILogger<RabbitMqNotificationPublisher> _logger;
-    private readonly Task _initializationTask;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
 
     private IConnection? _connection;
     private IChannel? _channel;
+    private bool _initializationAttempted;
 
     public RabbitMqNotificationPublisher(IConfiguration config, ILogger<RabbitMqNotificationPublisher> logger)
     {
+        _config = config;
         _logger = logger;
         _queue = config["RabbitMQ:NotificationsQueue"] ?? "gym.notifications";
-        _initializationTask = InitAsync(config);
     }
 
-    private async Task InitAsync(IConfiguration config)
+    private async Task EnsureInitializedAsync()
     {
+        if (_channel is not null || _initializationAttempted)
+            return;
+
+        await _initLock.WaitAsync();
         try
         {
+            if (_channel is not null || _initializationAttempted)
+                return;
+
+            _initializationAttempted = true;
+
             var factory = new ConnectionFactory
             {
-                HostName = config["RabbitMQ:Host"] ?? "localhost",
-                Port = int.Parse(config["RabbitMQ:Port"] ?? "5672"),
-                UserName = config["RabbitMQ:Username"] ?? "guest",
-                Password = config["RabbitMQ:Password"] ?? "guest"
+                HostName = _config["RabbitMQ:Host"] ?? "localhost",
+                Port = int.Parse(_config["RabbitMQ:Port"] ?? "5672"),
+                UserName = _config["RabbitMQ:Username"] ?? "guest",
+                Password = _config["RabbitMQ:Password"] ?? "guest"
             };
 
             _connection = await factory.CreateConnectionAsync();
@@ -52,11 +64,15 @@ public sealed class RabbitMqNotificationPublisher : INotificationPublisher, IAsy
         {
             _logger.LogWarning("RabbitMQ not available - notifications disabled. {Message}", ex.Message);
         }
+        finally
+        {
+            _initLock.Release();
+        }
     }
 
     public async Task PublishAsync(NotificationMessage message)
     {
-        await _initializationTask;
+        await EnsureInitializedAsync();
 
         if (_channel is null)
             return;
@@ -78,8 +94,13 @@ public sealed class RabbitMqNotificationPublisher : INotificationPublisher, IAsy
         }
     }
 
+    public Task PublishAsync(string to, string subject, string body)
+        => PublishAsync(new NotificationMessage(to, subject, body));
+
     public async ValueTask DisposeAsync()
     {
+        _initLock.Dispose();
+
         if (_channel is not null)
             await _channel.DisposeAsync();
 

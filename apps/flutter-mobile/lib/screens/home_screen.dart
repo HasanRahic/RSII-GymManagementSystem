@@ -4496,43 +4496,17 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        const Text(
-          'TIP TRENINGA',
-          style: TextStyle(
-            color: Color(0xFF6B7280),
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children:
-              (_trainingTypes.isNotEmpty
-                      ? _trainingTypes
-                      : const [
-                          'Yoga',
-                          'Pilates',
-                          'Utezi',
-                          'Kardio',
-                          'CrossFit',
-                          'HIIT',
-                        ])
-                  .map(
-                    (type) => ChoiceChip(
-                      label: Text(type),
-                      selected: _selectedTrainingType == type,
-                      onSelected: (_) {
-                        setState(() {
-                          _selectedTrainingType = _selectedTrainingType == type
-                              ? null
-                              : type;
-                        });
-                        _scheduleDiscoveryRefresh();
-                      },
-                    ),
-                  )
-                  .toList(),
+        HomeTrainingTypeFilterSection(
+          trainingTypes: _trainingTypes,
+          selectedTrainingType: _selectedTrainingType,
+          onToggle: (type) {
+            setState(() {
+              _selectedTrainingType = _selectedTrainingType == type
+                  ? null
+                  : type;
+            });
+            _scheduleDiscoveryRefresh();
+          },
         ),
         const SizedBox(height: 14),
         Container(
