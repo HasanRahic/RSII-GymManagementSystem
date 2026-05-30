@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1461,6 +1462,16 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<bool> _launchStripeCheckout(String sessionUrl) async {
     final checkoutUri = Uri.tryParse(sessionUrl);
     if (!mounted || checkoutUri == null) return false;
+
+    final supportsEmbeddedCheckout =
+        !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.macOS);
+
+    if (!supportsEmbeddedCheckout) {
+      return launchUrl(checkoutUri, mode: LaunchMode.externalApplication);
+    }
 
     try {
       final launched = await Navigator.push<bool>(

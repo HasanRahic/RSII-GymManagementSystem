@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../core/constants.dart';
 import '../models/models.dart';
 import '../services/api_services.dart';
@@ -135,24 +137,44 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
   }
 
   Future<bool> _launchStripeCheckout(String sessionUrl) async {
-    if (!mounted) return false;
-    final launched = await Navigator.push<bool>(
-      context,
-      PageRouteBuilder<bool>(
-        transitionDuration: const Duration(milliseconds: 90),
-        reverseTransitionDuration: const Duration(milliseconds: 80),
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            StripeCheckoutScreen(checkoutUrl: sessionUrl),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final curved = CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutCubic,
-          );
-          return FadeTransition(opacity: curved, child: child);
-        },
-      ),
-    );
-    return launched ?? false;
+    final checkoutUri = Uri.tryParse(sessionUrl);
+    if (!mounted || checkoutUri == null) return false;
+
+    final supportsEmbeddedCheckout =
+        !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.macOS);
+
+    if (!supportsEmbeddedCheckout) {
+      return launchUrl(checkoutUri, mode: LaunchMode.externalApplication);
+    }
+
+    try {
+      final launched = await Navigator.push<bool>(
+        context,
+        PageRouteBuilder<bool>(
+          transitionDuration: const Duration(milliseconds: 90),
+          reverseTransitionDuration: const Duration(milliseconds: 80),
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              StripeCheckoutScreen(checkoutUrl: sessionUrl),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final curved = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            );
+            return FadeTransition(opacity: curved, child: child);
+          },
+        ),
+      );
+      if (launched == true) {
+        return true;
+      }
+    } catch (_) {
+      // Fall back to external browser below.
+    }
+
+    return launchUrl(checkoutUri, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _trackPaymentStatus(int paymentId) async {
@@ -239,6 +261,8 @@ class _MyMembershipsScreenState extends State<MyMembershipsScreen> {
       if (sessionUrl != null && sessionUrl.toString().isNotEmpty) {
         final launched = await _launchStripeCheckout(sessionUrl.toString());
         if (!launched) {
+          await PaymentService.clearPendingPayment(parsedPaymentId);
+          await _refreshPendingPaymentsCount();
           throw 'Ne mogu otvoriti checkout URL.';
         }
 
