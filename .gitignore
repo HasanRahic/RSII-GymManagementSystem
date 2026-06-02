@@ -54,4 +54,7 @@
 # Accidental root-level build artifacts (e.g., CMake tooling output)
 /build/
 
+# Submission/release artifacts stay local and go to GitHub Releases
+/resources/submission/
+
 # EF migrations snapshot shouldn't be ignored, so leave Migrations/ tracked

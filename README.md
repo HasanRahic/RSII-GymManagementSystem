@@ -143,9 +143,18 @@ Za pripremu arhive za predaju:
 .\resources\scripts\build-submission.ps1
 ```
 
-## Predaja po novim uputama
+Skripta kreira lokalni ZIP u `resources/submission/`. Taj folder je namjerno ignorisan iz Git-a jer build artefakti vise ne trebaju biti dio source repozitorija.
 
-- Napravi GitHub `Release` za verziju koju predajes.
-- U release priloge dodaj Android APK i Windows build artefakte.
+## Predaja po pravilima 2025/26
+
+1. Napravi release build za Android i Windows.
+2. Pokreni `.\resources\scripts\build-submission.ps1` da dobijes jedan predajni ZIP.
+3. Na GitHub-u otvori novi `Release` i kreiraj tag u formatu slicnom `fit-build-2026-06-01_v1.0`.
+4. U sekciji `Assets` uploaduj generisani ZIP iz `resources/submission/`.
+5. Na DL postavi link na tacan GitHub release, ne samo na repo.
+
+Napomene:
+
+- Source code ostaje u repozitoriju, a ZIP ide iskljucivo kroz GitHub Release.
 - `.env` nemoj commitovati.
-- Na DL postavi link na tacan GitHub release, ne samo na repo.
+- Ako je neki ZIP ranije bio commitovan, ukloni ga iz pracenja prije finalne predaje.
